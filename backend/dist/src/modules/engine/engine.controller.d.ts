@@ -5,18 +5,21 @@ export declare class EngineController {
     getStatus(u: any): Promise<{
         success: boolean;
         data: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            userId: string;
-            status: import(".prisma/client").$Enums.EngineStatus;
-            startedAt: Date | null;
-            stoppedAt: Date | null;
-            stopReason: string | null;
-            dailyPnl: number;
-            dailyTrades: number;
-            dailyLossDate: Date | null;
-            consecLossCount: number;
+            state: {
+                id: string;
+                createdAt: Date;
+                updatedAt: Date;
+                userId: string;
+                status: import(".prisma/client").$Enums.EngineStatus;
+                startedAt: Date | null;
+                stoppedAt: Date | null;
+                stopReason: string | null;
+                dailyPnl: number;
+                dailyTrades: number;
+                dailyLossDate: Date | null;
+                consecLossCount: number;
+            };
+            activeStrategies: number;
         };
     }>;
     start(u: any): Promise<{

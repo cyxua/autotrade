@@ -1,23 +1,28 @@
 import { PrismaService } from '../../prisma/prisma.service';
 import { BinanceService } from '../binance/binance.service';
+import { StrategyEngineService } from './strategy-engine.service';
 export declare class EngineService {
     private prisma;
     private binance;
+    private strategyEngine;
     private readonly logger;
-    constructor(prisma: PrismaService, binance: BinanceService);
+    constructor(prisma: PrismaService, binance: BinanceService, strategyEngine: StrategyEngineService);
     getStatus(userId: string): Promise<{
-        id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        userId: string;
-        status: import(".prisma/client").$Enums.EngineStatus;
-        startedAt: Date | null;
-        stoppedAt: Date | null;
-        stopReason: string | null;
-        dailyPnl: number;
-        dailyTrades: number;
-        dailyLossDate: Date | null;
-        consecLossCount: number;
+        state: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: string;
+            status: import(".prisma/client").$Enums.EngineStatus;
+            startedAt: Date | null;
+            stoppedAt: Date | null;
+            stopReason: string | null;
+            dailyPnl: number;
+            dailyTrades: number;
+            dailyLossDate: Date | null;
+            consecLossCount: number;
+        };
+        activeStrategies: number;
     }>;
     start(userId: string): Promise<{
         status: string;

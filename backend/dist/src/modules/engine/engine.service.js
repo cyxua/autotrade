@@ -14,27 +14,25 @@ exports.EngineService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const binance_service_1 = require("../binance/binance.service");
+const common_2 = require("@nestjs/common");
+const strategy_engine_service_1 = require("./strategy-engine.service");
 let EngineService = EngineService_1 = class EngineService {
-    constructor(prisma, binance) {
+    constructor(prisma, binance, strategyEngine) {
         this.prisma = prisma;
         this.binance = binance;
+        this.strategyEngine = strategyEngine;
         this.logger = new common_1.Logger(EngineService_1.name);
     }
-    async getStatus(userId) { return this.prisma.engineState.findUnique({ where: { userId } }); }
-    async start(userId) {
-        const state = await this.prisma.engineState.findUnique({ where: { userId } });
-        if (state?.status === 'RUNNING')
-            throw new common_1.BadRequestException({ code: 'ALREADY_RUNNING', message: '이미 실행 중입니다.' });
-        const apiCfg = await this.prisma.apiConfig.findUnique({ where: { userId } });
-        if (!apiCfg)
-            throw new common_1.BadRequestException({ code: 'API_NOT_CONFIGURED', message: 'API 키를 먼저 설정하세요.' });
+    async getStatus(userId) {
+        const state = await this.prisma.engineState.findFirst({ where: { userId } });
         const active = await this.prisma.strategy.count({ where: { userId, enabled: true } });
-        if (active === 0)
-            throw new common_1.BadRequestException({ code: 'NO_ACTIVE_STRATEGY', message: '활성화된 전략이 없습니다.' });
+        return { state, activeStrategies: active };
+    }
+    async start(userId) {
         await this.binance.loadApiConfig(userId);
-        const ok = await this.binance.ping();
+        const { ok } = await this.binance.testConnection();
         if (!ok)
-            throw new common_1.BadRequestException({ code: 'API_CONNECTION_FAILED', message: 'Binance API 연결 실패' });
+            throw new common_2.BadRequestException({ code: 'API_CONNECTION_FAILED', message: 'Binance API 연결 실패' });
         const now = new Date();
         await this.prisma.engineState.upsert({
             where: { userId },
@@ -42,17 +40,19 @@ let EngineService = EngineService_1 = class EngineService {
             create: { userId, status: 'RUNNING', startedAt: now },
         });
         this.logger.log(`[${userId}] 자동매매 엔진 시작`);
+        await this.strategyEngine.startEngine(userId);
         return { status: 'RUNNING', startedAt: now };
     }
     async stop(userId, reason = 'MANUAL') {
         await this.prisma.engineState.update({ where: { userId }, data: { status: 'STOPPED', stoppedAt: new Date(), stopReason: reason } });
+        this.strategyEngine.stopEngine(userId);
         this.logger.log(`[${userId}] 자동매매 엔진 중지`);
         return { status: 'STOPPED' };
     }
     async emergencyStop(userId, closePositions = false) {
         this.logger.warn(`[${userId}] 🚨 긴급 정지 실행`);
         await this.prisma.engineState.update({ where: { userId }, data: { status: 'EMERGENCY_STOPPED', stoppedAt: new Date(), stopReason: 'EMERGENCY' } });
-        await this.binance.loadApiConfig(userId);
+        this.strategyEngine.stopEngine(userId);
         let canceledOrders = 0;
         try {
             await this.binance.cancelAllOrders();
@@ -83,6 +83,8 @@ let EngineService = EngineService_1 = class EngineService {
 exports.EngineService = EngineService;
 exports.EngineService = EngineService = EngineService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService, binance_service_1.BinanceService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        binance_service_1.BinanceService,
+        strategy_engine_service_1.StrategyEngineService])
 ], EngineService);
 //# sourceMappingURL=engine.service.js.map
