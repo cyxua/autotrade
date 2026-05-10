@@ -23,12 +23,11 @@ export function TradingChart() {
 
   useEffect(() => {
     if (!containerRef.current || typeof window === 'undefined') return;
+    let mounted = true;
 
     let cleanup: (() => void) | undefined;
 
-    let mounted = true;
     const init = async () => {
-      if (!mounted) return;
       const lc = await import('lightweight-charts');
       const { createChart, CrosshairMode } = lc;
 
@@ -151,8 +150,7 @@ const connectWs = (sym: string, interval: string, candleSeries: any) => {
         const msg = JSON.parse(e.data);
         if (msg.e !== 'kline') return;
         const k = msg.k;
-        if (!mounted) return;
-          candleSeries.update({
+        candleSeries.update({
           time: Math.floor(k.t / 1000) as any,
           open:  parseFloat(k.o),
           high:  parseFloat(k.h),
