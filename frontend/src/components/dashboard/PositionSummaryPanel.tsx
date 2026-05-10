@@ -1,40 +1,93 @@
 'use client';
-import { mockPositions } from '@/mock/positions.mock';
-import { useRiskStore } from '@/store/riskStore';
+import { useAccountStore } from '@/store/accountStore';
 import { useAutoTradeStore } from '@/store/autoTradeStore';
+import { useRiskStore } from '@/store/riskStore';
 
 export function PositionSummaryPanel() {
+  const { positions, balance, isLoading, error } = useAccountStore();
   const { dailyPnl, consecLossCount } = useAutoTradeStore();
   const { maxDailyLossUsdt, consecutiveLossStop } = useRiskStore();
 
+  const fmtPrice = (v: string | number) => parseFloat(String(v)).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const fmtPnl  = (v: string | number) => {
+    const n = parseFloat(String(v));
+    return `${n >= 0 ? '+' : ''}${n.toFixed(2)} USDT`;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+      {/* 잔고 카드 */}
       <div style={{ background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '16px' }}>
-        <p style={{ fontSize: '12px', color: '#6B7280', marginBottom: '12px' }}>현재 포지션</p>
-        {mockPositions.length === 0 ? (
-          <p style={{ fontSize: '13px', color: '#4B5563', textAlign: 'center', padding: '16px 0' }}>포지션 없음</p>
-        ) : mockPositions.map(p => (
-          <div key={p.id} style={{ borderRadius: '8px', padding: '12px', background: '#1F2937' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{p.symbol}</span>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: p.side === 'LONG' ? '#4ADE80' : '#F87171' }}>{p.side} {p.leverage}x</span>
-            </div>
-            {[['진입가', `$${p.entryPrice.toLocaleString()}`], ['현재가', `$${p.markPrice.toLocaleString()}`], ['TP', `$${p.takeProfitPrice.toLocaleString()}`], ['SL', `$${p.stopLossPrice.toLocaleString()}`]].map(([l, v]) => (
-              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <p style={{ fontSize: '12px', color: '#6B7280', marginBottom: '12px' }}>계좌 잔고 (USDT)</p>
+        {isLoading && !balance ? (
+          <p style={{ fontSize: '12px', color: '#4B5563' }}>조회 중...</p>
+        ) : error && !balance ? (
+          <p style={{ fontSize: '12px', color: '#F87171' }}>⚠ {error}</p>
+        ) : balance ? (
+          <>
+            {[
+              ['지갑 잔고', fmtPrice(balance.walletBalance)],
+              ['사용 가능', fmtPrice(balance.availableBalance)],
+              ['미실현 손익', fmtPnl(balance.crossUnPnl)],
+            ].map(([l, v]) => (
+              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <span style={{ fontSize: '11px', color: '#6B7280' }}>{l}</span>
-                <span style={{ fontSize: '11px', color: '#D1D5DB' }}>{v}</span>
+                <span style={{ fontSize: '12px', color: '#D1D5DB', fontWeight: '500' }}>{v}</span>
               </div>
             ))}
-            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #374151', display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '11px', color: '#6B7280' }}>미실현 손익</span>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: p.unrealizedPnl >= 0 ? '#4ADE80' : '#F87171' }}>
-                {p.unrealizedPnl >= 0 ? '+' : ''}{p.unrealizedPnl.toFixed(2)} USDT
-              </span>
-            </div>
-          </div>
-        ))}
+          </>
+        ) : (
+          <p style={{ fontSize: '12px', color: '#4B5563' }}>API 연결 후 표시</p>
+        )}
       </div>
 
+      {/* 현재 포지션 */}
+      <div style={{ background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <p style={{ fontSize: '12px', color: '#6B7280' }}>현재 포지션</p>
+          <span style={{ fontSize: '11px', color: '#4B5563' }}>{positions.length}개</span>
+        </div>
+
+        {isLoading && positions.length === 0 ? (
+          <p style={{ fontSize: '12px', color: '#4B5563' }}>조회 중...</p>
+        ) : positions.length === 0 ? (
+          <p style={{ fontSize: '13px', color: '#4B5563', textAlign: 'center', padding: '12px 0' }}>포지션 없음</p>
+        ) : (
+          positions.map(p => {
+            const pnl = parseFloat(p.unRealizedProfit);
+            return (
+              <div key={`${p.symbol}-${p.side}`} style={{ borderRadius: '8px', padding: '12px', background: '#1F2937', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{p.symbol}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: p.side === 'LONG' ? '#4ADE80' : '#F87171' }}>
+                    {p.side} {p.leverage}x
+                  </span>
+                </div>
+                {[
+                  ['진입가', `$${fmtPrice(p.entryPrice)}`],
+                  ['마크가', `$${fmtPrice(p.markPrice)}`],
+                  ['청산가', `$${fmtPrice(p.liquidationPrice)}`],
+                  ['마진', p.marginType],
+                ].map(([l, v]) => (
+                  <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '11px', color: '#6B7280' }}>{l}</span>
+                    <span style={{ fontSize: '11px', color: '#D1D5DB' }}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #374151', display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '11px', color: '#6B7280' }}>미실현 손익</span>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: pnl >= 0 ? '#4ADE80' : '#F87171' }}>
+                    {fmtPnl(p.unRealizedProfit)}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 리스크 상태 */}
       <div style={{ background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '16px' }}>
         <p style={{ fontSize: '12px', color: '#6B7280', marginBottom: '12px' }}>리스크 상태</p>
         {[

@@ -24,6 +24,7 @@ const risk_module_1 = require("./modules/risk/risk.module");
 const notification_module_1 = require("./modules/notification/notification.module");
 const dashboard_module_1 = require("./modules/dashboard/dashboard.module");
 const order_module_1 = require("./modules/order/order.module");
+const futures_module_1 = require("./modules/futures/futures.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -42,6 +43,7 @@ exports.AppModule = AppModule = __decorate([
             notification_module_1.NotificationModule,
             dashboard_module_1.DashboardModule,
             order_module_1.OrderModule,
+            futures_module_1.FuturesModule,
         ],
     })
 ], AppModule);

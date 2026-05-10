@@ -12,6 +12,7 @@ import { RiskModule } from './modules/risk/risk.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { OrderModule } from './modules/order/order.module';
+import { FuturesModule } from './modules/futures/futures.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { OrderModule } from './modules/order/order.module';
     NotificationModule,
     DashboardModule,
     OrderModule,
+    FuturesModule,
   ],
 })
 export class AppModule {}
