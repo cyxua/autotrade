@@ -1,0 +1,482 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── ENUM ──────────────────────────────────────────────────
+
+enum TradingMode {
+  TESTNET
+  LIVE
+}
+
+enum MarginType {
+  ISOLATED
+  CROSSED
+}
+
+enum PositionSide {
+  LONG
+  SHORT
+  BOTH
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP_MARKET
+  TAKE_PROFIT_MARKET
+  TRAILING_STOP_MARKET
+}
+
+enum OrderStatus {
+  PENDING
+  NEW
+  PARTIALLY_FILLED
+  FILLED
+  CANCELED
+  REJECTED
+  EXPIRED
+  ERROR
+}
+
+enum StrategyType {
+  MA_CROSS
+  RSI_EXTREME
+  BOLLINGER_BREAKOUT
+  HIGH_LOW_BREAKOUT
+  VOLUME_SPIKE
+}
+
+enum Timeframe {
+  m1
+  m5
+  m15
+  h1
+  h4
+}
+
+enum EngineStatus {
+  RUNNING
+  STOPPED
+  EMERGENCY_STOPPED
+  PAUSED_DAILY_LOSS
+  PAUSED_CONSEC_LOSS
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  DEBUG
+}
+
+enum NotificationEvent {
+  ENGINE_START
+  ENGINE_STOP
+  ENGINE_EMERGENCY_STOP
+  ORDER_FILLED
+  POSITION_OPEN
+  POSITION_CLOSE_TP
+  POSITION_CLOSE_SL
+  POSITION_CLOSE_MANUAL
+  DAILY_LOSS_LIMIT
+  CONSEC_LOSS_STOP
+  API_ERROR
+  RISK_BLOCKED
+}
+
+// ── 1. User ───────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  loginFailCount Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  apiConfig     ApiConfig?
+  riskConfig    RiskConfig?
+  strategies    Strategy[]
+  orders        Order[]
+  positions     Position[]
+  systemLogs    SystemLog[]
+  backtests     Backtest[]
+  notifConfig   NotificationConfig?
+  engineState   EngineState?
+  scannerConfig ScannerConfig?
+
+  @@map("users")
+}
+
+// ── 2. ApiConfig ──────────────────────────────────────────
+
+model ApiConfig {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  apiKey          String
+  encryptedSecret String
+  secretIv        String
+  secretTag       String
+
+  tradingMode     TradingMode @default(TESTNET)
+  isConnected     Boolean     @default(false)
+  lastCheckedAt   DateTime?
+  lastErrorMsg    String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("api_configs")
+}
+
+// ── 3. EngineState ────────────────────────────────────────
+
+model EngineState {
+  id              String       @id @default(cuid())
+  userId          String       @unique
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status          EngineStatus @default(STOPPED)
+  startedAt       DateTime?
+  stoppedAt       DateTime?
+  stopReason      String?
+
+  dailyPnl        Float        @default(0)
+  dailyTrades     Int          @default(0)
+  dailyLossDate   DateTime?
+  consecLossCount Int          @default(0)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("engine_states")
+}
+
+// ── 4. Strategy ───────────────────────────────────────────
+
+model Strategy {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  type        StrategyType
+  enabled     Boolean      @default(false)
+  symbol      String
+
+  timeframe         Timeframe  @default(m15)
+  positionSizeUsdt  Float      @default(50)
+  leverage          Int        @default(5)
+  marginType        MarginType @default(ISOLATED)
+  allowLong         Boolean    @default(true)
+  allowShort        Boolean    @default(true)
+  takeProfitPct     Float      @default(2.0)
+  stopLossPct       Float      @default(1.0)
+  trailingStopPct   Float      @default(0)
+  maxPositions      Int        @default(1)
+  maxDailyLoss      Float      @default(50)
+  maxDailyTrades    Int        @default(10)
+  stopOnConsecLoss  Int        @default(3)
+
+  params      Json         @default("{}")
+
+  totalTrades   Int      @default(0)
+  winTrades     Int      @default(0)
+  totalPnl      Float    @default(0)
+  lastSignalAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders      Order[]
+  positions   Position[]
+
+  @@map("strategies")
+}
+
+// ── 5. Order ──────────────────────────────────────────────
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategyId      String?
+  strategy        Strategy?   @relation(fields: [strategyId], references: [id])
+
+  binanceOrderId  String?     @unique
+  clientOrderId   String?     @unique
+
+  symbol          String
+  side            OrderSide
+  positionSide    PositionSide
+  orderType       OrderType
+  status          OrderStatus @default(PENDING)
+
+  quantity        Float
+  price           Float?
+  stopPrice       Float?
+  avgFillPrice    Float?
+  filledQty       Float       @default(0)
+
+  leverage        Int
+  marginType      MarginType
+
+  realizedPnl     Float?
+  commission      Float?
+  commissionAsset String?     @default("USDT")
+
+  entryReason     String?
+  exitReason      String?
+
+  positionId      String?
+  position        Position?   @relation(fields: [positionId], references: [id])
+
+  errorMessage    String?
+
+  filledAt        DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([symbol, createdAt(sort: Desc)])
+  @@index([strategyId])
+  @@map("orders")
+}
+
+// ── 6. Position ───────────────────────────────────────────
+
+model Position {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategyId      String?
+  strategy        Strategy?    @relation(fields: [strategyId], references: [id])
+
+  symbol          String
+  positionSide    PositionSide
+  status          String       @default("OPEN")
+
+  entryPrice      Float
+  exitPrice       Float?
+  quantity        Float
+  leverage        Int
+  marginType      MarginType
+
+  realizedPnl     Float?
+  unrealizedPnl   Float?
+  commission      Float?
+
+  takeProfitPrice Float?
+  stopLossPrice   Float?
+  trailingStopPct Float?
+
+  entryReason     String?
+  exitReason      String?
+
+  orders          Order[]
+
+  openedAt        DateTime     @default(now())
+  closedAt        DateTime?
+  updatedAt       DateTime     @updatedAt
+
+  @@index([userId, status])
+  @@index([symbol, status])
+  @@map("positions")
+}
+
+// ── 7. RiskConfig ─────────────────────────────────────────
+
+model RiskConfig {
+  id                       String  @id @default(cuid())
+  userId                   String  @unique
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  maxPositionRatioPct      Float   @default(20)
+  maxTotalPositionRatioPct Float   @default(50)
+  maxLeverage              Int     @default(10)
+  minLiqDistancePct        Float   @default(10)
+  maxDailyLossUsdt         Float   @default(100)
+  maxDailyTrades           Int     @default(50)
+  consecutiveLossStop      Int     @default(3)
+  volatilityPausePct       Float   @default(5)
+  volatilityPauseMinutes   Int     @default(5)
+
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@map("risk_configs")
+}
+
+// ── 8. ScannerConfig ──────────────────────────────────────
+
+model ScannerConfig {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  enabled             Boolean  @default(true)
+  intervalMinutes     Int      @default(5)
+
+  topNByVolume        Int      @default(20)
+  topNByTradeCount    Int      @default(20)
+  minPriceChangePct   Float    @default(1.0)
+  maxSpreadPct        Float    @default(0.1)
+  minVolumeUsdt       Float    @default(1000000)
+
+  symbolPool          Json     @default("[\"BTCUSDT\",\"ETHUSDT\",\"SOLUSDT\",\"BNBUSDT\",\"XRPUSDT\",\"DOGEUSDT\"]")
+  excludeSymbols      Json     @default("[]")
+
+  lastResult          Json?
+  lastScannedAt       DateTime?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("scanner_configs")
+}
+
+// ── 9. NotificationConfig ─────────────────────────────────
+
+model NotificationConfig {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  telegramEnabled Boolean  @default(false)
+  botToken        String?
+  chatId          String?
+
+  enabledEvents   Json     @default("{\"ENGINE_START\":true,\"ENGINE_STOP\":true,\"ENGINE_EMERGENCY_STOP\":true,\"ORDER_FILLED\":true,\"POSITION_OPEN\":true,\"POSITION_CLOSE_TP\":true,\"POSITION_CLOSE_SL\":true,\"DAILY_LOSS_LIMIT\":true,\"CONSEC_LOSS_STOP\":true,\"API_ERROR\":true}")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("notification_configs")
+}
+
+// ── 10. NotificationLog ───────────────────────────────────
+
+model NotificationLog {
+  id        String            @id @default(cuid())
+  userId    String
+  event     NotificationEvent
+  message   String
+  success   Boolean
+  errorMsg  String?
+  sentAt    DateTime          @default(now())
+
+  @@index([userId, sentAt(sort: Desc)])
+  @@map("notification_logs")
+}
+
+// ── 11. SystemLog ─────────────────────────────────────────
+
+model SystemLog {
+  id         String    @id @default(cuid())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+
+  level      LogLevel
+  module     String
+  message    String
+  meta       Json?
+
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([level, createdAt(sort: Desc)])
+  @@map("system_logs")
+}
+
+// ── 12. RiskBlockLog ──────────────────────────────────────
+
+model RiskBlockLog {
+  id          String   @id @default(cuid())
+  userId      String
+  strategyId  String?
+  symbol      String
+  reason      String
+  detail      Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("risk_block_logs")
+}
+
+// ── 13. Backtest ──────────────────────────────────────────
+
+model Backtest {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  strategyType    StrategyType
+  strategyParams  Json
+  symbol          String
+  timeframe       Timeframe
+  startDate       DateTime
+  endDate         DateTime
+  initialCapital  Float
+
+  finalCapital    Float?
+  totalReturnPct  Float?
+  winRate         Float?
+  totalTrades     Int?
+  winTrades       Int?
+  lossTrades      Int?
+  avgWin          Float?
+  avgLoss         Float?
+  profitFactor    Float?
+  maxDrawdownPct  Float?
+  sharpeRatio     Float?
+  totalFee        Float?
+  feeRate         Float        @default(0.0004)
+  slippagePct     Float        @default(0.0005)
+
+  tradeLog        Json?
+
+  status          String       @default("PENDING")
+  errorMsg        String?
+
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("backtests")
+}
+
+// ── 14. CandleCache ───────────────────────────────────────
+
+model CandleCache {
+  id        String    @id @default(cuid())
+  symbol    String
+  timeframe Timeframe
+  openTime  DateTime
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+  closeTime DateTime
+
+  @@unique([symbol, timeframe, openTime])
+  @@index([symbol, timeframe, openTime(sort: Desc)])
+  @@map("candle_caches")
+}

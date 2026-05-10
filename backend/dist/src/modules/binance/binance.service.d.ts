@@ -1,0 +1,28 @@
+import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../prisma/prisma.service';
+export declare class BinanceService {
+    private config;
+    private prisma;
+    private readonly logger;
+    private client;
+    private mode;
+    private apiKey;
+    private apiSecret;
+    private readonly BASE_URLS;
+    constructor(config: ConfigService, prisma: PrismaService);
+    private initClient;
+    loadApiConfig(userId: string): Promise<void>;
+    private sign;
+    private signedRequest;
+    ping(): Promise<boolean>;
+    getAccount(): Promise<any>;
+    getBalance(): Promise<any>;
+    getPositions(): Promise<any>;
+    getOpenOrders(symbol?: string): Promise<any>;
+    setLeverage(symbol: string, leverage: number): Promise<any>;
+    setMarginType(symbol: string, marginType: string): Promise<any>;
+    placeOrder(params: Record<string, any>): Promise<any>;
+    cancelAllOrders(symbol?: string): Promise<any>;
+    getKlines(symbol: string, interval: string, limit?: number, startTime?: number, endTime?: number): Promise<any>;
+    getMode(): "testnet" | "live";
+}
