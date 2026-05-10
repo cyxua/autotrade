@@ -16,7 +16,7 @@ export function StrategySignalLog() {
             padding: '8px', borderRadius: '6px', marginBottom: '4px',
             background: s.signal === 'BLOCKED' ? 'rgba(239,68,68,0.05)' : 'rgba(74,222,128,0.05)',
           }}>
-            <span style={{ fontSize: '10px', color: '#6B7280', width: '60px', flexShrink: 0 }}>{fmt(s.time)}</span>
+            <span suppressHydrationWarning style={{ fontSize: '10px', color: '#6B7280', width: '60px', flexShrink: 0 }}>{fmt(s.time)}</span>
             <span style={{
               fontSize: '11px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', flexShrink: 0,
               background: s.signal === 'LONG' ? 'rgba(74,222,128,0.15)' : s.signal === 'SHORT' ? 'rgba(248,113,113,0.15)' : 'rgba(156,163,175,0.15)',
