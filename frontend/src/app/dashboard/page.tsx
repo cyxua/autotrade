@@ -12,6 +12,7 @@ import { ModeBadge } from '@/components/layout/ModeBadge';
 import { LiveModeWarning } from '@/components/settings/LiveModeWarning';
 import { AutoTradeToggle } from '@/components/dashboard/AutoTradeToggle';
 import { EmergencyStopButton } from '@/components/dashboard/EmergencyStopButton';
+import { useChartStore } from '@/store/chartStore';
 import { RealtimeTickerPanel } from '@/components/realtime/RealtimeTickerPanel';
 import { TradingChartPanel } from '@/components/dashboard/TradingChartPanel';
 import { PositionSummaryPanel } from '@/components/dashboard/PositionSummaryPanel';
@@ -31,6 +32,7 @@ function StatCard({ label, value, color = '#F9FAFB', sub = '', small = false }: 
 }
 
 export default function DashboardPage() {
+  const { symbol: chartSymbol } = useChartStore();
   const [summary, setSummary] = useState<any>(null);
   const router = useRouter();
   const { setMode, mode } = useTradingModeStore();
@@ -147,7 +149,7 @@ export default function DashboardPage() {
 
         {/* 차트 + 포지션 */}
         <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 280px', gap: '12px', marginBottom: '12px' }}>
-          <RealtimeTickerPanel symbol='BTCUSDT' />
+          <RealtimeTickerPanel symbol={chartSymbol} />
           <TradingChartPanel />
           <PositionSummaryPanel />
         </div>
