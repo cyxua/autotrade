@@ -26,11 +26,13 @@ export function TradingChart() {
 
     let cleanup: (() => void) | undefined;
 
+    let mounted = true;
     const init = async () => {
+      if (!mounted) return;
       const lc = await import('lightweight-charts');
       const { createChart, CrosshairMode } = lc;
 
-      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
+      if (chartRef.current) { try { chartRef.current.remove(); } catch(e) {} chartRef.current = null; }
       if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
 
       const chart = createChart(containerRef.current!, {
@@ -123,8 +125,9 @@ export function TradingChart() {
 
     init();
     return () => {
+      mounted = false;
       cleanup?.();
-      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
+      if (chartRef.current) { try { chartRef.current.remove(); } catch(e) {} chartRef.current = null; }
       if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     };
   }, [symbol, timeframe]);
@@ -148,7 +151,8 @@ const connectWs = (sym: string, interval: string, candleSeries: any) => {
         const msg = JSON.parse(e.data);
         if (msg.e !== 'kline') return;
         const k = msg.k;
-        candleSeries.update({
+        if (!mounted) return;
+          candleSeries.update({
           time: Math.floor(k.t / 1000) as any,
           open:  parseFloat(k.o),
           high:  parseFloat(k.h),
