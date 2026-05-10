@@ -56,6 +56,7 @@ export function AutoTradeToggle() {
   };
 
   const handleLiveConfirm = async () => {
+    addNotification('success', '자동매매 시작', '실거래 자동매매가 시작되었습니다.');
     setShowModal(false);
     setLoading(true);
     try {
