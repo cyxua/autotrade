@@ -1,5 +1,5 @@
 'use client';
-mport { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { fetchBalance, fetchAccount, fetchPositions } from '@/lib/futuresApi';
@@ -147,7 +147,7 @@ export default function DashboardPage() {
 
         {/* 차트 + 포지션 */}
         <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 280px', gap: '12px', marginBottom: '12px' }}>
-          <RealtimeTickerPanel symbol={symbol ?? 'BTCUSDT'} />
+          <RealtimeTickerPanel symbol='BTCUSDT' />
           <TradingChartPanel />
           <PositionSummaryPanel />
         </div>
