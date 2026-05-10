@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+mport { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { fetchBalance, fetchAccount, fetchPositions } from '@/lib/futuresApi';
@@ -12,6 +12,7 @@ import { ModeBadge } from '@/components/layout/ModeBadge';
 import { LiveModeWarning } from '@/components/settings/LiveModeWarning';
 import { AutoTradeToggle } from '@/components/dashboard/AutoTradeToggle';
 import { EmergencyStopButton } from '@/components/dashboard/EmergencyStopButton';
+import { RealtimeTickerPanel } from '@/components/realtime/RealtimeTickerPanel';
 import { TradingChartPanel } from '@/components/dashboard/TradingChartPanel';
 import { PositionSummaryPanel } from '@/components/dashboard/PositionSummaryPanel';
 import { RecentOrderTable } from '@/components/dashboard/RecentOrderTable';
@@ -145,7 +146,8 @@ export default function DashboardPage() {
         </div>
 
         {/* 차트 + 포지션 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '12px', marginBottom: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 280px', gap: '12px', marginBottom: '12px' }}>
+          <RealtimeTickerPanel symbol={symbol ?? 'BTCUSDT'} />
           <TradingChartPanel />
           <PositionSummaryPanel />
         </div>
