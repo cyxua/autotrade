@@ -38,7 +38,7 @@ export function TradingChart() {
         grid: { vertLines: { color: '#1F2937' }, horzLines: { color: '#1F2937' } },
         crosshair: { mode: CrosshairMode.Normal },
         rightPriceScale: { borderColor: '#374151' },
-        timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false },
+        timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false, timezone: 'Asia/Seoul' },
         width: containerRef.current!.clientWidth,
         height: 320,
       });
