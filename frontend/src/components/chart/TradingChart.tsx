@@ -34,11 +34,18 @@ export function TradingChart() {
       if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
 
       const chart = createChart(containerRef.current!, {
+      localization: {
+        locale: 'ko-KR',
+        timeFormatter: (t: number) => {
+          const d = new Date((t + 32400) * 1000);
+          return d.toISOString().substring(11, 16);
+        },
+      },
         layout: { background: { color: '#111827' }, textColor: '#9CA3AF' },
         grid: { vertLines: { color: '#1F2937' }, horzLines: { color: '#1F2937' } },
         crosshair: { mode: CrosshairMode.Normal },
         rightPriceScale: { borderColor: '#374151' },
-        timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false, timezone: 'Asia/Seoul' },
+        timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false },
         width: containerRef.current!.clientWidth,
         height: 320,
       });
