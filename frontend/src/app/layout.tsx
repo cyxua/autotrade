@@ -6,10 +6,12 @@ export const metadata: Metadata = {
   description: 'Binance USDⓈ-M Futures 자동매매',
 };
 
+import { ToastContainer } from '@/components/notification/ToastContainer';
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>{children}  <ToastContainer />
+    </body>
     </html>
   );
 }

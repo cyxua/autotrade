@@ -13,6 +13,7 @@ import { LiveModeWarning } from '@/components/settings/LiveModeWarning';
 import { AutoTradeToggle } from '@/components/dashboard/AutoTradeToggle';
 import { EmergencyStopButton } from '@/components/dashboard/EmergencyStopButton';
 import { useChartStore } from '@/store/chartStore';
+import { NotificationPanel } from '@/components/notification/NotificationPanel';
 import { RealtimeTickerPanel } from '@/components/realtime/RealtimeTickerPanel';
 import { TradingChartPanel } from '@/components/dashboard/TradingChartPanel';
 import { PositionSummaryPanel } from '@/components/dashboard/PositionSummaryPanel';
@@ -119,6 +120,7 @@ export default function DashboardPage() {
           <a href="/settings"   style={{ padding: '5px 10px', background: '#1F2937', color: '#D1D5DB', borderRadius: '6px', fontSize: '12px', textDecoration: 'none' }}>API 설정</a>
           <button onClick={() => api.post('/auth/logout').finally(() => router.push('/login'))}
             style={{ padding: '5px 10px', background: 'transparent', color: '#6B7280', border: 'none', fontSize: '12px', cursor: 'pointer' }}>로그아웃</button>
+          <NotificationPanel />
         </div>
       </div>
 
