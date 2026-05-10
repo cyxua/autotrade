@@ -131,11 +131,20 @@ export function TradingChart() {
 
   const connectWs = (sym: string, interval: string, candleSeries: any) => {
     const streamName = `${sym.toLowerCase()}@kline_${interval}`;
-    const ws = new WebSocket(`wss://fstream.binance.com/ws/${streamName}`);
+
+        const ws = new WebSocket(`wss://fstream.binance.com/ws/${streamName}`);
     wsRef.current = ws;
 
     ws.onopen = () => setWsStatus('연결됨');
-    ws.onclose = () => setWsStatus('끊김');
+    ws.onclose = () => {
+        setWsStatus('끊김');
+        setTimeout(() => {
+          if (wsRef.current === ws) {
+            const newWs = new WebSocket(`wss://fstream.binance.com/ws/${streamName}`);
+            wsRef.current = newWs;
+          }
+        }, 3000);
+      };
     ws.onerror = () => setWsStatus('끊김');
 
     ws.onmessage = (e) => {
