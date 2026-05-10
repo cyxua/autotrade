@@ -11,11 +11,18 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
   const port = config.get<number>('PORT', 4000);
-  const frontendUrl = config.get<string>('FRONTEND_URL', 'http://localhost:3000');
 
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: false }));
   app.use(cookieParser());
-  app.enableCors({ origin: frontendUrl, credentials: true, methods: ['GET','POST','PUT','DELETE','PATCH'] });
+
+  // Codespaces 및 localhost 모두 허용
+  app.enableCors({
+    origin: (origin, callback) => callback(null, true),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  });
+
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
