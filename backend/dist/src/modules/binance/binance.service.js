@@ -57,6 +57,7 @@ let BinanceService = BinanceService_1 = class BinanceService {
     constructor(config, prisma) {
         this.config = config;
         this.prisma = prisma;
+        this._posCache = null;
         this.logger = new common_1.Logger(BinanceService_1.name);
         this.mode = 'testnet';
         this.apiKey = '';
@@ -115,7 +116,13 @@ let BinanceService = BinanceService_1 = class BinanceService {
     }
     async getAccount() { return this.signedRequest('GET', '/fapi/v2/account'); }
     async getBalance() { return this.signedRequest('GET', '/fapi/v2/balance'); }
-    async getPositions() { return this.signedRequest('GET', '/fapi/v2/positionRisk'); }
+    async getPositions() {
+        if (this._posCache && Date.now() - this._posCache.ts < 20000)
+            return this._posCache.data;
+        const data = await this.signedRequest('GET', '/fapi/v2/positionRisk');
+        this._posCache = { data, ts: Date.now() };
+        return data;
+    }
     async getOpenOrders(symbol) {
         return this.signedRequest('GET', '/fapi/v1/openOrders', symbol ? { symbol } : {});
     }
@@ -155,6 +162,21 @@ let BinanceService = BinanceService_1 = class BinanceService {
         }));
     }
     getMode() { return this.mode; }
+    async getStepSize(symbol) {
+        try {
+            const data = await this.client.get('/fapi/v1/exchangeInfo');
+            const sym = data.data.symbols.find((s) => s.symbol === symbol);
+            const lotFilter = sym?.filters?.find((f) => f.filterType === 'LOT_SIZE');
+            return parseFloat(lotFilter?.stepSize ?? '1');
+        }
+        catch {
+            return 1;
+        }
+    }
+    async getTickerPrice(symbol) {
+        const data = await this.signedRequest('GET', '/fapi/v1/ticker/price', { symbol });
+        return parseFloat(data.price);
+    }
 };
 exports.BinanceService = BinanceService;
 exports.BinanceService = BinanceService = BinanceService_1 = __decorate([

@@ -7,6 +7,7 @@ import { decrypt } from '../../common/utils/crypto.util';
 
 @Injectable()
 export class BinanceService {
+  private _posCache: { data: any; ts: number } | null = null;
   private readonly logger = new Logger(BinanceService.name);
   private client: AxiosInstance;
   private mode: 'testnet' | 'live' = 'testnet';
@@ -67,7 +68,17 @@ export class BinanceService {
 
   async getAccount() { return this.signedRequest('GET', '/fapi/v2/account'); }
   async getBalance() { return this.signedRequest('GET', '/fapi/v2/balance'); }
-  async getPositions() { return this.signedRequest('GET', '/fapi/v2/positionRisk'); }
+  async getPositions() {
+    if (this._posCache && Date.now() - this._posCache.ts < 30000) return this._posCache.data;
+    try {
+      const data = await this.signedRequest('GET', '/fapi/v2/positionRisk');
+      this._posCache = { data, ts: Date.now() };
+      return data;
+    } catch (e: any) {
+      if (this._posCache) return this._posCache.data;
+      return [];
+    }
+  }
   async getOpenOrders(symbol?: string) {
     return this.signedRequest('GET', '/fapi/v1/openOrders', symbol ? { symbol } : {});
   }
@@ -100,4 +111,17 @@ export class BinanceService {
     }));
   }
   getMode() { return this.mode; }
+
+  async getStepSize(symbol: string): Promise<number> {
+    try {
+      const data = await this.client.get('/fapi/v1/exchangeInfo');
+      const sym = data.data.symbols.find((s: any) => s.symbol === symbol);
+      const lotFilter = sym?.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
+      return parseFloat(lotFilter?.stepSize ?? '1');
+    } catch { return 1; }
+  }
+  async getTickerPrice(symbol: string): Promise<number> {
+  const data = await this.signedRequest('GET', '/fapi/v1/ticker/price', { symbol });
+  return parseFloat(data.price);
+}
 }

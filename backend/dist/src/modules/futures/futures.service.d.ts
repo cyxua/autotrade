@@ -3,6 +3,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 export declare class FuturesService {
     private config;
     private prisma;
+    private cache;
+    private cached;
     private readonly logger;
     private readonly BASE;
     private client;

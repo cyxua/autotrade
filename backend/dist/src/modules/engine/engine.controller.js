@@ -27,6 +27,12 @@ let EngineController = class EngineController {
     async emergencyStop(u, body) {
         return { success: true, data: await this.engine.emergencyStop(u.id, body.closePositions ?? false) };
     }
+    async resetEmergency(u) {
+        return { success: true, data: await this.engine.resetEmergencyStop(u.id) };
+    }
+    async closePosition(u, body) {
+        return { success: true, data: await this.engine.closePosition(u.id, body.symbol) };
+    }
 };
 exports.EngineController = EngineController;
 __decorate([
@@ -58,6 +64,21 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], EngineController.prototype, "emergencyStop", null);
+__decorate([
+    (0, common_1.Post)('reset-emergency'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], EngineController.prototype, "resetEmergency", null);
+__decorate([
+    (0, common_1.Post)('close-position'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], EngineController.prototype, "closePosition", null);
 exports.EngineController = EngineController = __decorate([
     (0, common_1.Controller)('engine'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

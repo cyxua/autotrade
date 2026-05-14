@@ -1,3 +1,9 @@
+function formatQty(qty: number, step: number): string {
+  const precision = step < 1 ? String(step).split('.')[1]?.length ?? 0 : 0;
+  const snapped = Math.floor(qty / step) * step;
+  return snapped.toFixed(precision);
+}
+
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BinanceService } from '../binance/binance.service';
@@ -45,15 +51,15 @@ export class StrategyEngineService {
   private async processStrategy(userId: string, strategy: any) {
     try {
       const params = strategy.params as any;
-      const klines = await this.binance.getKlines(strategy.symbol, strategy.timeframe, 50);
+      const klines = await this.binance.getKlines(strategy.symbol, strategy.timeframe.replace(/^([a-zA-Z]+)(\d+)$/, '$2$1'), 50);
       if (!klines || klines.length < 20) return;
 
       const closes = klines.map((k: any) => parseFloat(k[4]));
 
       if (strategy.type === 'RSI_EXTREME') {
         const period = params?.rsiPeriod ?? 14;
-        const overbought = params?.overbought ?? 70;
-        const oversold = params?.oversold ?? 30;
+        const overbought = params?.overboughtLevel ?? params?.overbought ?? 70;
+        const oversold = params?.oversoldLevel ?? params?.oversold ?? 30;
         const rsi = this.calcRSI(closes, period);
         this.logger.log(`[${strategy.symbol}] RSI: ${rsi.toFixed(2)} (ob:${overbought} os:${oversold})`);
 
@@ -95,11 +101,11 @@ export class StrategyEngineService {
 
   private async placeOrder(userId: string, strategy: any, side: string, positionSide: string) {
     try {
-      const ticker = await this.binance.getPrice(strategy.symbol);
-      const price = parseFloat(ticker.price);
-      const notional = strategy.positionSizeUsdt * strategy.leverage;
+      const price = await this.binance.getTickerPrice(strategy.symbol);
+      const stepSize = await this.binance.getStepSize(strategy.symbol);
+    const notional = strategy.positionSizeUsdt * strategy.leverage;
       const qty = (notional / price);
-      const qtyStr = qty.toFixed(0);
+      const qtyStr = formatQty(qty, stepSize);
 
       this.logger.log(`[${strategy.symbol}] ${side} 주문 시도 qty:${qtyStr} price:${price}`);
 
@@ -107,10 +113,9 @@ export class StrategyEngineService {
       await this.binance.placeOrder({
         symbol: strategy.symbol,
         side,
-        positionSide,
+        positionSide: 'BOTH',
         type: 'MARKET',
         quantity: qtyStr,
-        reduceOnly: false,
       });
 
       this.logger.log(`[${strategy.symbol}] ${side} 주문 완료`);

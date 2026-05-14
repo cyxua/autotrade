@@ -11,6 +11,11 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var StrategyEngineService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StrategyEngineService = void 0;
+function formatQty(qty, step) {
+    const precision = step < 1 ? String(step).split('.')[1]?.length ?? 0 : 0;
+    const snapped = Math.floor(qty / step) * step;
+    return snapped.toFixed(precision);
+}
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const binance_service_1 = require("../binance/binance.service");
@@ -54,14 +59,14 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
     async processStrategy(userId, strategy) {
         try {
             const params = strategy.params;
-            const klines = await this.binance.getKlines(strategy.symbol, strategy.timeframe, 50);
+            const klines = await this.binance.getKlines(strategy.symbol, strategy.timeframe.replace(/^([a-zA-Z]+)(\d+)$/, '$2$1'), 50);
             if (!klines || klines.length < 20)
                 return;
             const closes = klines.map((k) => parseFloat(k[4]));
             if (strategy.type === 'RSI_EXTREME') {
                 const period = params?.rsiPeriod ?? 14;
-                const overbought = params?.overbought ?? 70;
-                const oversold = params?.oversold ?? 30;
+                const overbought = params?.overboughtLevel ?? params?.overbought ?? 70;
+                const oversold = params?.oversoldLevel ?? params?.oversold ?? 30;
                 const rsi = this.calcRSI(closes, period);
                 this.logger.log(`[${strategy.symbol}] RSI: ${rsi.toFixed(2)} (ob:${overbought} os:${oversold})`);
                 const positions = await this.binance.getPositions();
@@ -100,20 +105,19 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
     }
     async placeOrder(userId, strategy, side, positionSide) {
         try {
-            const ticker = await this.binance.getPrice(strategy.symbol);
-            const price = parseFloat(ticker.price);
+            const price = await this.binance.getTickerPrice(strategy.symbol);
+            const stepSize = await this.binance.getStepSize(strategy.symbol);
             const notional = strategy.positionSizeUsdt * strategy.leverage;
             const qty = (notional / price);
-            const qtyStr = qty.toFixed(0);
+            const qtyStr = formatQty(qty, stepSize);
             this.logger.log(`[${strategy.symbol}] ${side} 주문 시도 qty:${qtyStr} price:${price}`);
             await this.binance.setLeverage(strategy.symbol, strategy.leverage);
             await this.binance.placeOrder({
                 symbol: strategy.symbol,
                 side,
-                positionSide,
+                positionSide: 'BOTH',
                 type: 'MARKET',
                 quantity: qtyStr,
-                reduceOnly: false,
             });
             this.logger.log(`[${strategy.symbol}] ${side} 주문 완료`);
         }

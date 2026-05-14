@@ -54,9 +54,16 @@ const crypto = __importStar(require("crypto"));
 const prisma_service_1 = require("../../prisma/prisma.service");
 const crypto_util_1 = require("../../common/utils/crypto.util");
 let FuturesService = FuturesService_1 = class FuturesService {
+    cached(key, ttl, fn) {
+        const hit = this.cache.get(key);
+        if (hit && Date.now() - hit.ts < ttl)
+            return Promise.resolve(hit.data);
+        return fn().then(data => { this.cache.set(key, { data, ts: Date.now() }); return data; });
+    }
     constructor(config, prisma) {
         this.config = config;
         this.prisma = prisma;
+        this.cache = new Map();
         this.logger = new common_1.Logger(FuturesService_1.name);
         this.BASE = 'https://fapi.binance.com';
         this.client = axios_1.default.create({ baseURL: this.BASE, timeout: 10_000 });
@@ -135,46 +142,61 @@ let FuturesService = FuturesService_1 = class FuturesService {
         return res.data;
     }
     async getBalance(userId) {
-        const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
-        const data = await this.signedGet(baseUrl, '/fapi/v3/balance', apiKey, secret);
-        const usdt = data.find((b) => b.asset === 'USDT');
-        return {
-            asset: 'USDT',
-            walletBalance: usdt?.balance ?? '0',
-            availableBalance: usdt?.availableBalance ?? '0',
-            crossWalletBalance: usdt?.crossWalletBalance ?? '0',
-            crossUnPnl: usdt?.crossUnPnl ?? '0',
-        };
+        try {
+            const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
+            const data = await this.signedGet(baseUrl, '/fapi/v3/balance', apiKey, secret);
+            const usdt = data.find((b) => b.asset === 'USDT');
+            return {
+                asset: 'USDT',
+                walletBalance: usdt?.balance ?? '0',
+                availableBalance: usdt?.availableBalance ?? '0',
+                crossWalletBalance: usdt?.crossWalletBalance ?? '0',
+                crossUnPnl: usdt?.crossUnPnl ?? '0',
+            };
+        }
+        catch (e) {
+            return { asset: 'USDT', walletBalance: '0', availableBalance: '0', crossWalletBalance: '0', crossUnPnl: '0' };
+        }
     }
     async getAccount(userId) {
-        const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
-        const data = await this.signedGet(baseUrl, '/fapi/v3/account', apiKey, secret);
-        return {
-            totalWalletBalance: data.totalWalletBalance,
-            totalMarginBalance: data.totalMarginBalance,
-            totalUnrealizedProfit: data.totalUnrealizedProfit,
-            availableBalance: data.availableBalance,
-            totalPositionInitialMargin: data.totalPositionInitialMargin,
-            totalOpenOrderInitialMargin: data.totalOpenOrderInitialMargin,
-        };
+        try {
+            const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
+            const data = await this.signedGet(baseUrl, '/fapi/v3/account', apiKey, secret);
+            return {
+                totalWalletBalance: data.totalWalletBalance,
+                totalMarginBalance: data.totalMarginBalance,
+                totalUnrealizedProfit: data.totalUnrealizedProfit,
+                availableBalance: data.availableBalance,
+                totalPositionInitialMargin: data.totalPositionInitialMargin,
+                totalOpenOrderInitialMargin: data.totalOpenOrderInitialMargin,
+            };
+        }
+        catch (e) {
+            return null;
+        }
     }
     async getPositions(userId) {
-        const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
-        const data = await this.signedGet(baseUrl, '/fapi/v3/positionRisk', apiKey, secret);
-        return data
-            .filter((p) => parseFloat(p.positionAmt) !== 0)
-            .map((p) => ({
-            symbol: p.symbol,
-            positionAmt: p.positionAmt,
-            entryPrice: p.entryPrice,
-            markPrice: p.markPrice,
-            liquidationPrice: p.liquidationPrice,
-            unRealizedProfit: p.unRealizedProfit,
-            leverage: p.leverage,
-            marginType: p.marginType,
-            side: parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
-            notional: p.notional,
-        }));
+        try {
+            const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
+            const data = await this.signedGet(baseUrl, '/fapi/v3/positionRisk', apiKey, secret);
+            return data
+                .filter((p) => parseFloat(p.positionAmt) !== 0)
+                .map((p) => ({
+                symbol: p.symbol,
+                positionAmt: p.positionAmt,
+                entryPrice: p.entryPrice,
+                markPrice: p.markPrice,
+                liquidationPrice: p.liquidationPrice,
+                unRealizedProfit: p.unRealizedProfit,
+                leverage: p.leverage,
+                marginType: p.marginType,
+                side: parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
+                notional: p.notional,
+            }));
+        }
+        catch (e) {
+            return [];
+        }
     }
     async getOrders(userId, symbol, limit = 20) {
         const { apiKey, secret, baseUrl } = await this.loadKeys(userId);

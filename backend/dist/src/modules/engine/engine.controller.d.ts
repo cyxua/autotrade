@@ -43,4 +43,20 @@ export declare class EngineController {
             closedPositions: number;
         };
     }>;
+    resetEmergency(u: any): Promise<{
+        success: boolean;
+        data: {
+            status: string;
+        };
+    }>;
+    closePosition(u: any, body: any): Promise<{
+        success: boolean;
+        data: {
+            status: string;
+            symbol?: undefined;
+        } | {
+            status: string;
+            symbol: string;
+        };
+    }>;
 }

@@ -22,7 +22,7 @@ export class EngineService {
 
   async start(userId: string) {
     await this.binance.loadApiConfig(userId);
-    const { ok } = await this.binance.testConnection();
+    const ok = await this.binance.ping();
     if (!ok) throw new BadRequestException({ code: 'API_CONNECTION_FAILED', message: 'Binance API 연결 실패' });
     const now = new Date();
     await this.prisma.engineState.upsert({
@@ -62,5 +62,30 @@ export class EngineService {
       } catch (e) { this.logger.error('포지션 청산 실패', e); }
     }
     return { status: 'EMERGENCY_STOPPED', canceledOrders, closedPositions };
+  }
+
+  async resetEmergencyStop(userId: string) {
+    await this.prisma.engineState.upsert({
+      where: { userId },
+      update: { status: 'STOPPED', stopReason: null },
+      create: { userId, status: 'STOPPED' },
+    });
+    return { status: 'RESET' };
+  }
+
+  async closePosition(userId: string, symbol: string) {
+    await this.binance.loadApiConfig(userId);
+    const positions = await this.binance.getPositions();
+    const pos = positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0);
+    if (!pos) return { status: 'NO_POSITION' };
+    const posAmt = parseFloat(pos.positionAmt);
+    const side = posAmt > 0 ? 'SELL' : 'BUY';
+    await this.binance.placeOrder({
+      symbol, side,
+      positionSide: 'BOTH',
+      type: 'MARKET',
+      quantity: Math.abs(posAmt).toFixed(3),
+    });
+    return { status: 'CLOSED', symbol };
   }
 }

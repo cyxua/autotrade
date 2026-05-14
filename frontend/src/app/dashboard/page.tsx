@@ -86,7 +86,7 @@ export default function DashboardPage() {
     loadSummary();
     loadBinanceData();
     const iv1 = setInterval(loadSummary, 20_000);
-    const iv2 = setInterval(loadBinanceData, 10_000);
+    const iv2 = setInterval(loadBinanceData, 60_000);
     return () => { clearInterval(iv1); clearInterval(iv2); };
   }, []);
 

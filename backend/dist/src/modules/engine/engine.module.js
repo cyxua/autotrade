@@ -11,15 +11,17 @@ const common_1 = require("@nestjs/common");
 const engine_service_1 = require("./engine.service");
 const engine_controller_1 = require("./engine.controller");
 const binance_module_1 = require("../binance/binance.module");
+const prisma_module_1 = require("../../prisma/prisma.module");
+const strategy_engine_service_1 = require("./strategy-engine.service");
 let EngineModule = class EngineModule {
 };
 exports.EngineModule = EngineModule;
 exports.EngineModule = EngineModule = __decorate([
     (0, common_1.Module)({
-        imports: [binance_module_1.BinanceModule],
-        providers: [engine_service_1.EngineService],
+        imports: [binance_module_1.BinanceModule, prisma_module_1.PrismaModule],
+        providers: [engine_service_1.EngineService, strategy_engine_service_1.StrategyEngineService],
         controllers: [engine_controller_1.EngineController],
-        exports: [engine_service_1.EngineService],
+        exports: [engine_service_1.EngineService, strategy_engine_service_1.StrategyEngineService],
     })
 ], EngineModule);
 //# sourceMappingURL=engine.module.js.map

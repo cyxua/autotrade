@@ -7,6 +7,12 @@ import { decrypt } from '../../common/utils/crypto.util';
 
 @Injectable()
 export class FuturesService {
+  private cache = new Map<string, { data: any; ts: number }>();
+  private cached(key: string, ttl: number, fn: () => Promise<any>) {
+    const hit = this.cache.get(key);
+    if (hit && Date.now() - hit.ts < ttl) return Promise.resolve(hit.data);
+    return fn().then(data => { this.cache.set(key, { data, ts: Date.now() }); return data; });
+  }
   private readonly logger = new Logger(FuturesService.name);
   private readonly BASE = 'https://fapi.binance.com';
   private client: AxiosInstance;
@@ -109,48 +115,56 @@ export class FuturesService {
   }
 
   async getBalance(userId: string) {
-    const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
-    const data = await this.signedGet(baseUrl, '/fapi/v3/balance', apiKey, secret);
-    const usdt = data.find((b: any) => b.asset === 'USDT');
-    return {
-      asset: 'USDT',
-      walletBalance: usdt?.balance ?? '0',
-      availableBalance: usdt?.availableBalance ?? '0',
-      crossWalletBalance: usdt?.crossWalletBalance ?? '0',
-      crossUnPnl: usdt?.crossUnPnl ?? '0',
-    };
+    try {
+      const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
+      const data = await this.signedGet(baseUrl, '/fapi/v3/balance', apiKey, secret);
+      const usdt = data.find((b: any) => b.asset === 'USDT');
+      return {
+        asset: 'USDT',
+        walletBalance: usdt?.balance ?? '0',
+        availableBalance: usdt?.availableBalance ?? '0',
+        crossWalletBalance: usdt?.crossWalletBalance ?? '0',
+        crossUnPnl: usdt?.crossUnPnl ?? '0',
+      };
+    } catch (e: any) {
+      return { asset: 'USDT', walletBalance: '0', availableBalance: '0', crossWalletBalance: '0', crossUnPnl: '0' };
+    }
   }
 
   async getAccount(userId: string) {
-    const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
-    const data = await this.signedGet(baseUrl, '/fapi/v3/account', apiKey, secret);
-    return {
-      totalWalletBalance:          data.totalWalletBalance,
-      totalMarginBalance:          data.totalMarginBalance,
-      totalUnrealizedProfit:       data.totalUnrealizedProfit,
-      availableBalance:            data.availableBalance,
-      totalPositionInitialMargin:  data.totalPositionInitialMargin,
-      totalOpenOrderInitialMargin: data.totalOpenOrderInitialMargin,
-    };
+    try {
+      const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
+      const data = await this.signedGet(baseUrl, '/fapi/v3/account', apiKey, secret);
+      return {
+        totalWalletBalance:          data.totalWalletBalance,
+        totalMarginBalance:          data.totalMarginBalance,
+        totalUnrealizedProfit:       data.totalUnrealizedProfit,
+        availableBalance:            data.availableBalance,
+        totalPositionInitialMargin:  data.totalPositionInitialMargin,
+        totalOpenOrderInitialMargin: data.totalOpenOrderInitialMargin,
+      };
+    } catch (e: any) { return null; }
   }
 
   async getPositions(userId: string) {
-    const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
-    const data = await this.signedGet(baseUrl, '/fapi/v3/positionRisk', apiKey, secret);
-    return data
-      .filter((p: any) => parseFloat(p.positionAmt) !== 0)
-      .map((p: any) => ({
-        symbol:          p.symbol,
-        positionAmt:     p.positionAmt,
-        entryPrice:      p.entryPrice,
-        markPrice:       p.markPrice,
-        liquidationPrice: p.liquidationPrice,
-        unRealizedProfit: p.unRealizedProfit,
-        leverage:        p.leverage,
-        marginType:      p.marginType,
-        side:            parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
-        notional:        p.notional,
-      }));
+    try {
+      const { apiKey, secret, baseUrl } = await this.loadKeys(userId);
+      const data = await this.signedGet(baseUrl, '/fapi/v3/positionRisk', apiKey, secret);
+      return data
+        .filter((p: any) => parseFloat(p.positionAmt) !== 0)
+        .map((p: any) => ({
+          symbol:          p.symbol,
+          positionAmt:     p.positionAmt,
+          entryPrice:      p.entryPrice,
+          markPrice:       p.markPrice,
+          liquidationPrice: p.liquidationPrice,
+          unRealizedProfit: p.unRealizedProfit,
+          leverage:        p.leverage,
+          marginType:      p.marginType,
+          side:            parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
+          notional:        p.notional,
+        }));
+    } catch (e: any) { return []; }
   }
 
   async getOrders(userId: string, symbol: string, limit = 20) {

@@ -24,7 +24,7 @@ async function bootstrap() {
         allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
     });
     app.setGlobalPrefix('api');
-    app.useGlobalPipes(new common_1.ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(new common_1.ValidationPipe({ whitelist: true, transform: true }));
     app.useGlobalFilters(new http_exception_filter_1.HttpExceptionFilter());
     app.useGlobalInterceptors(new logging_interceptor_1.LoggingInterceptor());
     await app.listen(port);

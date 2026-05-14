@@ -1,17 +1,33 @@
 'use client';
+import { useState } from 'react';
 import { useAccountStore } from '@/store/accountStore';
 import { useAutoTradeStore } from '@/store/autoTradeStore';
 import { useRiskStore } from '@/store/riskStore';
+import { api } from '@/lib/api';
 
 export function PositionSummaryPanel() {
   const { positions, balance, isLoading, error } = useAccountStore();
   const { dailyPnl, consecLossCount } = useAutoTradeStore();
   const { maxDailyLossUsdt, consecutiveLossStop } = useRiskStore();
+  const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
 
   const fmtPrice = (v: string | number) => parseFloat(String(v)).toLocaleString(undefined, { maximumFractionDigits: 4 });
-  const fmtPnl  = (v: string | number) => {
+  const fmtPnl = (v: string | number) => {
     const n = parseFloat(String(v));
     return `${n >= 0 ? '+' : ''}${n.toFixed(2)} USDT`;
+  };
+
+  const handleClosePosition = async (symbol: string) => {
+    if (!confirm(`${symbol} 포지션을 시장가로 청산하시겠습니까?`)) return;
+    setClosingSymbol(symbol);
+    try {
+      await api.post('/engine/close-position', { symbol });
+      alert(`✅ ${symbol} 청산 완료`);
+    } catch (e: any) {
+      alert(e.response?.data?.error?.message ?? '청산 실패');
+    } finally {
+      setClosingSymbol(null);
+    }
   };
 
   return (
@@ -29,13 +45,18 @@ export function PositionSummaryPanel() {
             {[
               ['지갑 잔고', fmtPrice(balance.walletBalance)],
               ['사용 가능', fmtPrice(balance.availableBalance)],
-              ['미실현 손익', fmtPnl(balance.crossUnPnl)],
             ].map(([l, v]) => (
-              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '11px', color: '#6B7280' }}>{l}</span>
+              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '12px', color: '#6B7280' }}>{l}</span>
                 <span style={{ fontSize: '12px', color: '#D1D5DB', fontWeight: '500' }}>{v}</span>
               </div>
             ))}
+            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #374151', display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '11px', color: '#6B7280' }}>미실현 손익</span>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: parseFloat(String(balance.unrealizedPnl ?? 0)) >= 0 ? '#4ADE80' : '#F87171' }}>
+                {fmtPnl(balance.unrealizedPnl ?? 0)}
+              </span>
+            </div>
           </>
         ) : (
           <p style={{ fontSize: '12px', color: '#4B5563' }}>API 연결 후 표시</p>
@@ -81,6 +102,18 @@ export function PositionSummaryPanel() {
                     {fmtPnl(p.unRealizedProfit)}
                   </span>
                 </div>
+                <button
+                  onClick={() => handleClosePosition(p.symbol)}
+                  disabled={closingSymbol === p.symbol}
+                  style={{
+                    marginTop: '10px', width: '100%', padding: '8px',
+                    background: closingSymbol === p.symbol ? '#374151' : '#7C3AED',
+                    color: 'white', border: 'none', borderRadius: '6px',
+                    fontSize: '12px', fontWeight: 'bold', cursor: closingSymbol === p.symbol ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {closingSymbol === p.symbol ? '청산 중...' : '✋ 수동 청산 (시장가)'}
+                </button>
               </div>
             );
           })
@@ -91,7 +124,7 @@ export function PositionSummaryPanel() {
       <div style={{ background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '16px' }}>
         <p style={{ fontSize: '12px', color: '#6B7280', marginBottom: '12px' }}>리스크 상태</p>
         {[
-          { label: '1일 손실', value: `${dailyPnl.toFixed(2)} USDT`, limit: maxDailyLossUsdt > 0 ? `/ ${maxDailyLossUsdt}` : '', warn: dailyPnl < -(maxDailyLossUsdt * 0.8) },
+          { label: '1일 손실', value: `${(dailyPnl).toFixed(2)} USDT`, limit: maxDailyLossUsdt > 0 ? `/ ${maxDailyLossUsdt}` : '', warn: dailyPnl < -(maxDailyLossUsdt * 0.8) },
           { label: '연속 손실', value: `${consecLossCount}회`, limit: consecutiveLossStop > 0 ? `/ ${consecutiveLossStop}회` : '', warn: consecLossCount >= consecutiveLossStop * 0.7 },
         ].map(r => (
           <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -102,6 +135,7 @@ export function PositionSummaryPanel() {
           </div>
         ))}
       </div>
+
     </div>
   );
 }

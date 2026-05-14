@@ -36,4 +36,14 @@ export declare class EngineService {
         canceledOrders: number;
         closedPositions: number;
     }>;
+    resetEmergencyStop(userId: string): Promise<{
+        status: string;
+    }>;
+    closePosition(userId: string, symbol: string): Promise<{
+        status: string;
+        symbol?: undefined;
+    } | {
+        status: string;
+        symbol: string;
+    }>;
 }

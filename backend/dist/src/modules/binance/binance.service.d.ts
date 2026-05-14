@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 export declare class BinanceService {
     private config;
     private prisma;
+    private _posCache;
     private readonly logger;
     private client;
     private mode;
@@ -25,4 +26,6 @@ export declare class BinanceService {
     cancelAllOrders(symbol?: string): Promise<any>;
     getKlines(symbol: string, interval: string, limit?: number, startTime?: number, endTime?: number): Promise<any>;
     getMode(): "testnet" | "live";
+    getStepSize(symbol: string): Promise<number>;
+    getTickerPrice(symbol: string): Promise<number>;
 }
