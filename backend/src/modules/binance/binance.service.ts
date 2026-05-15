@@ -121,7 +121,7 @@ export class BinanceService {
     } catch { return 1; }
   }
   async getTickerPrice(symbol: string): Promise<number> {
-  const data = await this.signedRequest('GET', '/fapi/v1/ticker/price', { symbol });
-  return parseFloat(data.price);
-}
+    const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
+    return parseFloat(res.data.price);
+  }
 }

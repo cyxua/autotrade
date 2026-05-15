@@ -38,8 +38,8 @@ export declare class RiskService {
             id: string;
             createdAt: Date;
             userId: string;
-            strategyId: string | null;
             reason: string;
+            strategyId: string | null;
             detail: import("@prisma/client/runtime/library").JsonValue | null;
         }[];
         total: number;
@@ -51,8 +51,8 @@ export declare class RiskService {
         id: string;
         createdAt: Date;
         userId: string;
-        strategyId: string | null;
         reason: string;
+        strategyId: string | null;
         detail: import("@prisma/client/runtime/library").JsonValue | null;
     }, never, import("@prisma/client/runtime/library").DefaultArgs>;
     resetDailyStats(userId: string): import(".prisma/client").Prisma.Prisma__EngineStateClient<{

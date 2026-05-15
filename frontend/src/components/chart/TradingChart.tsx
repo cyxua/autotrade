@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useChartStore } from '@/store/chartStore';
 import { fetchKlines, KlineData } from '@/lib/futuresApi';
 import { getMockCandles } from '@/mock/candles.mock';
-import { mockPositions } from '@/mock/positions.mock';
 import { useAccountStore } from '@/store/accountStore';
 
 type DataSource = 'live' | 'mock' | 'loading' | 'error';
@@ -95,7 +94,7 @@ export function TradingChart() {
       volSeries.setData(candles.map(c => ({ time: c.time as any, value: c.volume, color: c.close >= c.open ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)' })));
 
       // ── 포지션 라인 (실제 positions 우선, fallback mock) ──
-      const pos = positions.find(p => p.symbol === symbol) ?? mockPositions[0];
+      const pos = positions.find(p => p.symbol === symbol);
       if (pos && candleSeries.createPriceLine) {
         const ep = parseFloat((pos as any).entryPrice);
         const tp = parseFloat((pos as any).takeProfitPrice ?? '0');

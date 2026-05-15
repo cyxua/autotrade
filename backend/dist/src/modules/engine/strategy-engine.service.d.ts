@@ -9,8 +9,10 @@ export declare class StrategyEngineService {
     startEngine(userId: string): Promise<void>;
     stopEngine(userId: string): void;
     private scanStrategies;
+    private riskGuard;
     private processStrategy;
     private placeOrder;
+    private placeTpSl;
     private calcRSI;
     private calcEMA;
 }

@@ -181,8 +181,8 @@ let BinanceService = BinanceService_1 = class BinanceService {
         }
     }
     async getTickerPrice(symbol) {
-        const data = await this.signedRequest('GET', '/fapi/v1/ticker/price', { symbol });
-        return parseFloat(data.price);
+        const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
+        return parseFloat(res.data.price);
     }
 };
 exports.BinanceService = BinanceService;
