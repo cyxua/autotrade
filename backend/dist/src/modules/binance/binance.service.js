@@ -117,11 +117,18 @@ let BinanceService = BinanceService_1 = class BinanceService {
     async getAccount() { return this.signedRequest('GET', '/fapi/v2/account'); }
     async getBalance() { return this.signedRequest('GET', '/fapi/v2/balance'); }
     async getPositions() {
-        if (this._posCache && Date.now() - this._posCache.ts < 20000)
+        if (this._posCache && Date.now() - this._posCache.ts < 30000)
             return this._posCache.data;
-        const data = await this.signedRequest('GET', '/fapi/v2/positionRisk');
-        this._posCache = { data, ts: Date.now() };
-        return data;
+        try {
+            const data = await this.signedRequest('GET', '/fapi/v2/positionRisk');
+            this._posCache = { data, ts: Date.now() };
+            return data;
+        }
+        catch (e) {
+            if (this._posCache)
+                return this._posCache.data;
+            return [];
+        }
     }
     async getOpenOrders(symbol) {
         return this.signedRequest('GET', '/fapi/v1/openOrders', symbol ? { symbol } : {});
