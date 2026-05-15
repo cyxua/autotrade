@@ -62,22 +62,39 @@ let EngineService = EngineService_1 = class EngineService {
             this.logger.error('주문 취소 실패', e);
         }
         let closedPositions = 0;
+        let positionError = null;
         if (closePositions) {
             try {
-                const positions = await this.binance.getPositions();
+                const positions = await this.binance.getPositionsStrict();
                 const open = positions.filter((p) => parseFloat(p.positionAmt) !== 0);
                 for (const p of open) {
-                    const side = parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT';
-                    const orderSide = side === 'LONG' ? 'SELL' : 'BUY';
-                    await this.binance.placeOrder({ symbol: p.symbol, side: orderSide, positionSide: side, type: 'MARKET', quantity: Math.abs(parseFloat(p.positionAmt)).toString(), reduceOnly: true });
-                    closedPositions++;
+                    try {
+                        const posAmt = parseFloat(p.positionAmt);
+                        const orderSide = posAmt > 0 ? 'SELL' : 'BUY';
+                        let filters = { stepSize: 1 };
+                        try {
+                            filters = await this.binance.getSymbolFilters(p.symbol);
+                        }
+                        catch { }
+                        const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
+                        const snapped = Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize;
+                        const qtyStr = snapped.toFixed(precision);
+                        await this.binance.placeOrder({
+                            symbol: p.symbol, side: orderSide, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr,
+                        });
+                        closedPositions++;
+                    }
+                    catch (e) {
+                        this.logger.error(`[${p.symbol}] 긴급 청산 실패`, e.message);
+                    }
                 }
             }
             catch (e) {
-                this.logger.error('포지션 청산 실패', e);
+                positionError = `POSITION_FETCH_FAILED: ${e.message}`;
+                this.logger.error('긴급 정지 포지션 조회 실패', e.message);
             }
         }
-        return { status: 'EMERGENCY_STOPPED', canceledOrders, closedPositions };
+        return { status: 'EMERGENCY_STOPPED', canceledOrders, closedPositions, positionError };
     }
     async resetEmergencyStop(userId) {
         await this.prisma.engineState.upsert({
@@ -89,19 +106,22 @@ let EngineService = EngineService_1 = class EngineService {
     }
     async closePosition(userId, symbol) {
         await this.binance.loadApiConfig(userId);
-        const positions = await this.binance.getPositions();
+        const positions = await this.binance.getPositionsStrict();
         const pos = positions.find((p) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0);
         if (!pos)
             return { status: 'NO_POSITION' };
         const posAmt = parseFloat(pos.positionAmt);
         const side = posAmt > 0 ? 'SELL' : 'BUY';
-        await this.binance.placeOrder({
-            symbol, side,
-            positionSide: 'BOTH',
-            type: 'MARKET',
-            quantity: Math.abs(posAmt).toFixed(3),
-        });
-        return { status: 'CLOSED', symbol };
+        let filters = { stepSize: 1 };
+        try {
+            filters = await this.binance.getSymbolFilters(symbol);
+        }
+        catch { }
+        const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
+        const snapped = Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize;
+        const qtyStr = snapped.toFixed(precision);
+        await this.binance.placeOrder({ symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr });
+        return { status: 'CLOSED', symbol, quantity: qtyStr };
     }
 };
 exports.EngineService = EngineService;

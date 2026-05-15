@@ -35,6 +35,7 @@ export declare class EngineService {
         status: string;
         canceledOrders: number;
         closedPositions: number;
+        positionError: string;
     }>;
     resetEmergencyStop(userId: string): Promise<{
         status: string;
@@ -42,8 +43,10 @@ export declare class EngineService {
     closePosition(userId: string, symbol: string): Promise<{
         status: string;
         symbol?: undefined;
+        quantity?: undefined;
     } | {
         status: string;
         symbol: string;
+        quantity: string;
     }>;
 }

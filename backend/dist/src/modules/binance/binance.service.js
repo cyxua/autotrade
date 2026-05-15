@@ -181,23 +181,35 @@ let BinanceService = BinanceService_1 = class BinanceService {
     }
     getMode() { return this.mode; }
     async getSymbolFilters(symbol) {
+        let data;
         try {
-            const data = await this.client.get('/fapi/v1/exchangeInfo');
-            const sym = data.data.symbols.find((s) => s.symbol === symbol);
-            const filters = sym?.filters ?? [];
-            const lot = filters.find(f => f.filterType === 'LOT_SIZE');
-            const notional = filters.find(f => f.filterType === 'MIN_NOTIONAL');
-            const price = filters.find(f => f.filterType === 'PRICE_FILTER');
-            return {
-                stepSize: parseFloat(lot?.stepSize ?? '1'),
-                minQty: parseFloat(lot?.minQty ?? '0'),
-                minNotional: parseFloat(notional?.notional ?? '0'),
-                tickSize: parseFloat(price?.tickSize ?? '0.01'),
-            };
+            data = await this.client.get('/fapi/v1/exchangeInfo');
         }
         catch (e) {
             throw new Error(`SYMBOL_FILTER_CHECK_FAILED: ${e.message}`);
         }
+        const sym = data.data.symbols.find((s) => s.symbol === symbol);
+        if (!sym)
+            throw new Error(`SYMBOL_NOT_FOUND: ${symbol}`);
+        const filters = sym.filters ?? [];
+        const lot = filters.find((f) => f.filterType === 'LOT_SIZE');
+        const notional = filters.find((f) => f.filterType === 'MIN_NOTIONAL');
+        const price = filters.find((f) => f.filterType === 'PRICE_FILTER');
+        if (!lot)
+            throw new Error(`LOT_SIZE_FILTER_NOT_FOUND: ${symbol}`);
+        if (!price)
+            throw new Error(`PRICE_FILTER_NOT_FOUND: ${symbol}`);
+        if (!notional)
+            throw new Error(`MIN_NOTIONAL_FILTER_NOT_FOUND: ${symbol}`);
+        return {
+            stepSize: parseFloat(lot.stepSize),
+            minQty: parseFloat(lot.minQty),
+            minNotional: parseFloat(notional.notional),
+            tickSize: parseFloat(price.tickSize),
+        };
+    }
+    async getOrderDetail(symbol, orderId) {
+        return this.signedRequest('GET', '/fapi/v1/order', { symbol, orderId });
     }
     async getStepSize(symbol) {
         return (await this.getSymbolFilters(symbol)).stepSize;

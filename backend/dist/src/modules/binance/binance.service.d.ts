@@ -34,6 +34,7 @@ export declare class BinanceService {
         minNotional: number;
         tickSize: number;
     }>;
+    getOrderDetail(symbol: string, orderId: number): Promise<any>;
     getStepSize(symbol: string): Promise<number>;
     getTickerPrice(symbol: string): Promise<number>;
 }

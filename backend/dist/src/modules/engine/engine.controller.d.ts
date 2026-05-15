@@ -41,6 +41,7 @@ export declare class EngineController {
             status: string;
             canceledOrders: number;
             closedPositions: number;
+            positionError: string;
         };
     }>;
     resetEmergency(u: any): Promise<{
@@ -54,9 +55,11 @@ export declare class EngineController {
         data: {
             status: string;
             symbol?: undefined;
+            quantity?: undefined;
         } | {
             status: string;
             symbol: string;
+            quantity: string;
         };
     }>;
 }

@@ -130,22 +130,35 @@ export class BinanceService {
   async getSymbolFilters(symbol: string): Promise<{
     stepSize: number; minQty: number; minNotional: number; tickSize: number;
   }> {
+    let data: any;
     try {
-      const data = await this.client.get('/fapi/v1/exchangeInfo');
-      const sym = data.data.symbols.find((s: any) => s.symbol === symbol);
-      const filters: any[] = sym?.filters ?? [];
-      const lot   = filters.find(f => f.filterType === 'LOT_SIZE');
-      const notional = filters.find(f => f.filterType === 'MIN_NOTIONAL');
-      const price = filters.find(f => f.filterType === 'PRICE_FILTER');
-      return {
-        stepSize:   parseFloat(lot?.stepSize   ?? '1'),
-        minQty:     parseFloat(lot?.minQty     ?? '0'),
-        minNotional:parseFloat(notional?.notional ?? '0'),
-        tickSize:   parseFloat(price?.tickSize ?? '0.01'),
-      };
+      data = await this.client.get('/fapi/v1/exchangeInfo');
     } catch (e: any) {
       throw new Error(`SYMBOL_FILTER_CHECK_FAILED: ${e.message}`);
     }
+    const sym = data.data.symbols.find((s: any) => s.symbol === symbol);
+    if (!sym) throw new Error(`SYMBOL_NOT_FOUND: ${symbol}`);
+
+    const filters: any[] = sym.filters ?? [];
+    const lot      = filters.find((f: any) => f.filterType === 'LOT_SIZE');
+    const notional = filters.find((f: any) => f.filterType === 'MIN_NOTIONAL');
+    const price    = filters.find((f: any) => f.filterType === 'PRICE_FILTER');
+
+    if (!lot)      throw new Error(`LOT_SIZE_FILTER_NOT_FOUND: ${symbol}`);
+    if (!price)    throw new Error(`PRICE_FILTER_NOT_FOUND: ${symbol}`);
+    if (!notional) throw new Error(`MIN_NOTIONAL_FILTER_NOT_FOUND: ${symbol}`);
+
+    return {
+      stepSize:    parseFloat(lot.stepSize),
+      minQty:      parseFloat(lot.minQty),
+      minNotional: parseFloat(notional.notional),
+      tickSize:    parseFloat(price.tickSize),
+    };
+  }
+
+  // 주문 상세 재조회 (ACK 응답 보완용)
+  async getOrderDetail(symbol: string, orderId: number): Promise<any> {
+    return this.signedRequest('GET', '/fapi/v1/order', { symbol, orderId });
   }
 
   // 하위 호환 유지
