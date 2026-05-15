@@ -112,13 +112,30 @@ export class BinanceService {
   }
   getMode() { return this.mode; }
 
-  async getStepSize(symbol: string): Promise<number> {
+  async getSymbolFilters(symbol: string): Promise<{
+    stepSize: number; minQty: number; minNotional: number; tickSize: number;
+  }> {
     try {
       const data = await this.client.get('/fapi/v1/exchangeInfo');
       const sym = data.data.symbols.find((s: any) => s.symbol === symbol);
-      const lotFilter = sym?.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
-      return parseFloat(lotFilter?.stepSize ?? '1');
-    } catch { return 1; }
+      const filters: any[] = sym?.filters ?? [];
+      const lot   = filters.find(f => f.filterType === 'LOT_SIZE');
+      const notional = filters.find(f => f.filterType === 'MIN_NOTIONAL');
+      const price = filters.find(f => f.filterType === 'PRICE_FILTER');
+      return {
+        stepSize:   parseFloat(lot?.stepSize   ?? '1'),
+        minQty:     parseFloat(lot?.minQty     ?? '0'),
+        minNotional:parseFloat(notional?.notional ?? '0'),
+        tickSize:   parseFloat(price?.tickSize ?? '0.01'),
+      };
+    } catch {
+      return { stepSize: 1, minQty: 0, minNotional: 0, tickSize: 0.01 };
+    }
+  }
+
+  // 하위 호환 유지
+  async getStepSize(symbol: string): Promise<number> {
+    return (await this.getSymbolFilters(symbol)).stepSize;
   }
   async getTickerPrice(symbol: string): Promise<number> {
     const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });

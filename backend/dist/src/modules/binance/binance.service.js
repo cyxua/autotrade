@@ -169,16 +169,27 @@ let BinanceService = BinanceService_1 = class BinanceService {
         }));
     }
     getMode() { return this.mode; }
-    async getStepSize(symbol) {
+    async getSymbolFilters(symbol) {
         try {
             const data = await this.client.get('/fapi/v1/exchangeInfo');
             const sym = data.data.symbols.find((s) => s.symbol === symbol);
-            const lotFilter = sym?.filters?.find((f) => f.filterType === 'LOT_SIZE');
-            return parseFloat(lotFilter?.stepSize ?? '1');
+            const filters = sym?.filters ?? [];
+            const lot = filters.find(f => f.filterType === 'LOT_SIZE');
+            const notional = filters.find(f => f.filterType === 'MIN_NOTIONAL');
+            const price = filters.find(f => f.filterType === 'PRICE_FILTER');
+            return {
+                stepSize: parseFloat(lot?.stepSize ?? '1'),
+                minQty: parseFloat(lot?.minQty ?? '0'),
+                minNotional: parseFloat(notional?.notional ?? '0'),
+                tickSize: parseFloat(price?.tickSize ?? '0.01'),
+            };
         }
         catch {
-            return 1;
+            return { stepSize: 1, minQty: 0, minNotional: 0, tickSize: 0.01 };
         }
+    }
+    async getStepSize(symbol) {
+        return (await this.getSymbolFilters(symbol)).stepSize;
     }
     async getTickerPrice(symbol) {
         const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });

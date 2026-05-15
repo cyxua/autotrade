@@ -26,6 +26,12 @@ export declare class BinanceService {
     cancelAllOrders(symbol?: string): Promise<any>;
     getKlines(symbol: string, interval: string, limit?: number, startTime?: number, endTime?: number): Promise<any>;
     getMode(): "testnet" | "live";
+    getSymbolFilters(symbol: string): Promise<{
+        stepSize: number;
+        minQty: number;
+        minNotional: number;
+        tickSize: number;
+    }>;
     getStepSize(symbol: string): Promise<number>;
     getTickerPrice(symbol: string): Promise<number>;
 }

@@ -15,10 +15,14 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     const config = app.get(config_1.ConfigService);
     const port = config.get('PORT', 4000);
+    const isProd = config.get('NODE_ENV') === 'production';
+    const frontendUrl = config.get('FRONTEND_URL') ?? 'http://localhost:3000';
     app.use((0, helmet_1.default)({ crossOriginResourcePolicy: false }));
     app.use((0, cookie_parser_1.default)());
     app.enableCors({
-        origin: (origin, callback) => callback(null, true),
+        origin: isProd
+            ? frontendUrl
+            : (origin, callback) => callback(null, true),
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
@@ -29,6 +33,8 @@ async function bootstrap() {
     app.useGlobalInterceptors(new logging_interceptor_1.LoggingInterceptor());
     await app.listen(port);
     console.log(`🚀 Backend running on http://localhost:${port}/api`);
+    if (isProd)
+        console.log(`🔒 CORS restricted to: ${frontendUrl}`);
 }
 bootstrap();
 //# sourceMappingURL=main.js.map
