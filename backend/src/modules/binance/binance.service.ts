@@ -68,7 +68,8 @@ export class BinanceService {
 
   async getAccount() { return this.signedRequest('GET', '/fapi/v2/account'); }
   async getBalance() { return this.signedRequest('GET', '/fapi/v2/balance'); }
-  async getPositions() {
+  // 표시용: 실패 시 캐시 또는 [] 반환 (UI 전용)
+  async getPositionsDisplay() {
     if (this._posCache && Date.now() - this._posCache.ts < 30000) return this._posCache.data;
     try {
       const data = await this.signedRequest('GET', '/fapi/v2/positionRisk');
@@ -79,6 +80,20 @@ export class BinanceService {
       return [];
     }
   }
+
+  // 거래용: 실패 시 throw (리스크 검사·주문 흐름 전용)
+  async getPositionsStrict(): Promise<any[]> {
+    try {
+      const data = await this.signedRequest('GET', '/fapi/v2/positionRisk');
+      this._posCache = { data, ts: Date.now() };
+      return data;
+    } catch (e: any) {
+      throw new Error(`POSITION_FETCH_FAILED: ${e.message}`);
+    }
+  }
+
+  // 하위 호환 (cancelAllOrders 등)
+  async getPositions() { return this.getPositionsDisplay(); }
   async getOpenOrders(symbol?: string) {
     return this.signedRequest('GET', '/fapi/v1/openOrders', symbol ? { symbol } : {});
   }
@@ -128,8 +143,8 @@ export class BinanceService {
         minNotional:parseFloat(notional?.notional ?? '0'),
         tickSize:   parseFloat(price?.tickSize ?? '0.01'),
       };
-    } catch {
-      return { stepSize: 1, minQty: 0, minNotional: 0, tickSize: 0.01 };
+    } catch (e: any) {
+      throw new Error(`SYMBOL_FILTER_CHECK_FAILED: ${e.message}`);
     }
   }
 

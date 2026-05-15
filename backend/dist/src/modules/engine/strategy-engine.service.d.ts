@@ -8,6 +8,7 @@ export declare class StrategyEngineService {
     constructor(prisma: PrismaService, binance: BinanceService);
     startEngine(userId: string): Promise<void>;
     stopEngine(userId: string): void;
+    private haltEngine;
     private scanStrategies;
     private riskGuard;
     private processStrategy;

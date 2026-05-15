@@ -116,7 +116,7 @@ let BinanceService = BinanceService_1 = class BinanceService {
     }
     async getAccount() { return this.signedRequest('GET', '/fapi/v2/account'); }
     async getBalance() { return this.signedRequest('GET', '/fapi/v2/balance'); }
-    async getPositions() {
+    async getPositionsDisplay() {
         if (this._posCache && Date.now() - this._posCache.ts < 30000)
             return this._posCache.data;
         try {
@@ -130,6 +130,17 @@ let BinanceService = BinanceService_1 = class BinanceService {
             return [];
         }
     }
+    async getPositionsStrict() {
+        try {
+            const data = await this.signedRequest('GET', '/fapi/v2/positionRisk');
+            this._posCache = { data, ts: Date.now() };
+            return data;
+        }
+        catch (e) {
+            throw new Error(`POSITION_FETCH_FAILED: ${e.message}`);
+        }
+    }
+    async getPositions() { return this.getPositionsDisplay(); }
     async getOpenOrders(symbol) {
         return this.signedRequest('GET', '/fapi/v1/openOrders', symbol ? { symbol } : {});
     }
@@ -184,8 +195,8 @@ let BinanceService = BinanceService_1 = class BinanceService {
                 tickSize: parseFloat(price?.tickSize ?? '0.01'),
             };
         }
-        catch {
-            return { stepSize: 1, minQty: 0, minNotional: 0, tickSize: 0.01 };
+        catch (e) {
+            throw new Error(`SYMBOL_FILTER_CHECK_FAILED: ${e.message}`);
         }
     }
     async getStepSize(symbol) {

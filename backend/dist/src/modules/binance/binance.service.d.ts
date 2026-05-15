@@ -18,6 +18,8 @@ export declare class BinanceService {
     ping(): Promise<boolean>;
     getAccount(): Promise<any>;
     getBalance(): Promise<any>;
+    getPositionsDisplay(): Promise<any>;
+    getPositionsStrict(): Promise<any[]>;
     getPositions(): Promise<any>;
     getOpenOrders(symbol?: string): Promise<any>;
     setLeverage(symbol: string, leverage: number): Promise<any>;

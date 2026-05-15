@@ -7,7 +7,7 @@ export declare class DashboardController {
         data: {
             engine: {
                 status: import(".prisma/client").$Enums.EngineStatus;
-                tradingMode: string;
+                tradingMode: import(".prisma/client").$Enums.TradingMode;
                 dailyPnl: number;
                 dailyTrades: number;
                 consecLossCount: number;
