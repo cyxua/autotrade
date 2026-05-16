@@ -18,6 +18,7 @@ export declare class EngineController {
                 dailyTrades: number;
                 dailyLossDate: Date | null;
                 consecLossCount: number;
+                lastPnlSyncAt: Date | null;
             };
             activeStrategies: number;
         };

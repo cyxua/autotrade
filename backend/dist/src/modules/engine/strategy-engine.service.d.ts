@@ -9,7 +9,6 @@ export declare class StrategyEngineService {
     private evaluator;
     private readonly logger;
     private timers;
-    private lastPnlSyncAt;
     constructor(prisma: PrismaService, binance: BinanceService, indicator: IndicatorService, evaluator: StrategyRuleEvaluator);
     startEngine(userId: string): Promise<void>;
     stopEngine(userId: string): void;

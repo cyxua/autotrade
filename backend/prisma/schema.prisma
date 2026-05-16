@@ -162,6 +162,7 @@ model EngineState {
   dailyTrades     Int          @default(0)
   dailyLossDate   DateTime?
   consecLossCount Int          @default(0)
+  lastPnlSyncAt   DateTime?
 
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt

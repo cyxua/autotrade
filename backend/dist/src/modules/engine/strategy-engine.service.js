@@ -20,6 +20,7 @@ function formatPrice(price, tickSize) {
     return (Math.floor(price / tickSize) * tickSize).toFixed(precision);
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function toOrderId(id) { return id != null ? String(id) : null; }
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const binance_service_1 = require("../binance/binance.service");
@@ -32,7 +33,6 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
     evaluator;
     logger = new common_1.Logger(StrategyEngineService_1.name);
     timers = new Map();
-    lastPnlSyncAt = new Map();
     constructor(prisma, binance, indicator, evaluator) {
         this.prisma = prisma;
         this.binance = binance;
@@ -90,50 +90,61 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
     }
     async syncPnlStats(userId) {
         try {
-            const lastSync = this.lastPnlSyncAt.get(userId) ?? (Date.now() - 3600_000);
+            const state = await this.prisma.engineState.findFirst({ where: { userId } });
+            if (!state)
+                return;
+            const lastSyncMs = state.lastPnlSyncAt
+                ? new Date(state.lastPnlSyncAt).getTime()
+                : (Date.now() - 3600_000);
             const now = Date.now();
-            const incomes = await this.binance.getIncome('', 'REALIZED_PNL', lastSync + 1, 1000);
+            const incomes = await this.binance.getIncome('', 'REALIZED_PNL', lastSyncMs + 1, 1000);
             if (incomes.length === 0) {
-                this.lastPnlSyncAt.set(userId, now);
+                await this.prisma.engineState.update({
+                    where: { userId }, data: { lastPnlSyncAt: new Date(now) },
+                }).catch(() => { });
                 return;
             }
             const todayStart = new Date();
             todayStart.setHours(0, 0, 0, 0);
-            const todayPnl = incomes
-                .filter(i => i.time >= todayStart.getTime())
-                .reduce((s, i) => s + parseFloat(i.income), 0);
-            const state = await this.prisma.engineState.findFirst({ where: { userId } });
-            let consecLoss = state?.consecLossCount ?? 0;
-            for (const income of incomes) {
+            const allTodayIncomes = await this.binance.getIncome('', 'REALIZED_PNL', todayStart.getTime(), 1000);
+            const todayPnl = allTodayIncomes.reduce((s, i) => s + parseFloat(i.income), 0);
+            let consecLoss = state.consecLossCount ?? 0;
+            const sorted = [...incomes].sort((a, b) => a.time - b.time);
+            for (const income of sorted) {
                 const pnl = parseFloat(income.income);
                 if (pnl < 0)
                     consecLoss++;
                 else if (pnl > 0)
                     consecLoss = 0;
             }
-            await this.prisma.engineState.updateMany({
+            await this.prisma.engineState.update({
                 where: { userId },
-                data: { dailyPnl: { increment: todayPnl }, consecLossCount: consecLoss },
+                data: { dailyPnl: todayPnl, consecLossCount: consecLoss, lastPnlSyncAt: new Date(now) },
             });
             const strategies = await this.prisma.strategy.findMany({ where: { userId } });
+            const symbolCount = strategies.reduce((m, s) => {
+                m.set(s.symbol, (m.get(s.symbol) ?? 0) + 1);
+                return m;
+            }, new Map());
             for (const strat of strategies) {
+                if ((symbolCount.get(strat.symbol) ?? 0) > 1)
+                    continue;
                 const stratIncomes = incomes.filter((i) => i.symbol === strat.symbol);
                 if (stratIncomes.length === 0)
                     continue;
                 const pnlSum = stratIncomes.reduce((s, i) => s + parseFloat(i.income), 0);
-                const winCount = stratIncomes.filter((i) => parseFloat(i.income) > 0).length;
+                const winCnt = stratIncomes.filter((i) => parseFloat(i.income) > 0).length;
                 await this.prisma.strategy.update({
                     where: { id: strat.id },
                     data: {
                         totalPnl: { increment: pnlSum },
                         totalTrades: { increment: stratIncomes.length },
-                        winTrades: { increment: winCount },
+                        winTrades: { increment: winCnt },
                         lastSignalAt: new Date(),
                     },
                 });
             }
-            this.lastPnlSyncAt.set(userId, now);
-            this.logger.log(`[${userId}] PnL 동기화 완료: ${incomes.length}건, 오늘 PnL: ${todayPnl.toFixed(4)}`);
+            this.logger.log(`[${userId}] PnL 동기화: ${incomes.length}건, 오늘PnL: ${todayPnl.toFixed(4)}, consecLoss: ${consecLoss}`);
         }
         catch (e) {
             this.logger.warn(`[syncPnlStats] 오류 (무시): ${e.message}`);
@@ -172,8 +183,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'POSITION_FETCH_FAILED', e.message);
             return { ok: false, reason: 'POSITION_FETCH_FAILED' };
         }
-        const samePosOpen = binancePositions.find(p => p.symbol === strategy.symbol && parseFloat(p.positionAmt) !== 0);
-        if (samePosOpen) {
+        if (binancePositions.find(p => p.symbol === strategy.symbol && parseFloat(p.positionAmt) !== 0)) {
             await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'POSITION_ALREADY_OPEN');
             return { ok: false, reason: 'POSITION_ALREADY_OPEN' };
         }
@@ -218,44 +228,42 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 this.logger.warn(`[${strategy.symbol}] exitRules 설정됨 — 현재 엔진에서 미평가`);
             const tfMap = { m1: '1m', m5: '5m', m15: '15m', h1: '1h', h4: '4h' };
             let klines = await this.binance.getKlines(strategy.symbol, tfMap[strategy.timeframe] ?? '15m', 250);
-            if (params.useClosedCandleOnly !== false) {
-                const now = Date.now();
-                klines = klines.filter(k => k.closeTime < now);
-            }
+            if (params.useClosedCandleOnly !== false)
+                klines = klines.filter(k => k.closeTime < Date.now());
             if (klines.length < 50) {
                 this.logger.warn(`[${strategy.symbol}] 캔들 수 부족 (${klines.length}), 스킵`);
                 return;
             }
             const evalMode = params.evalMode ?? 'ALL';
             const minScore = params.minScore ?? 60;
-            const blockRules = params.blockRules ?? [];
-            if (blockRules.length > 0 && this.evaluator.evaluate(blockRules, klines, 'ANY').signal) {
-                this.logger.log(`[${strategy.symbol}] 차단 조건 발동 — 스킵`);
+            if ((params.blockRules ?? []).length > 0 &&
+                this.evaluator.evaluate(params.blockRules, klines, 'ANY').signal) {
+                this.logger.log(`[${strategy.symbol}] 차단 조건 발동`);
                 return;
             }
             let longSignal = false;
             let shortSignal = false;
             if (strategy.allowLong) {
-                const longRules = params.longEntryRules ?? [];
-                for (const r of longRules) {
-                    const err = (0, strategy_rule_evaluator_1.validateRule)(r);
-                    if (err) {
-                        this.logger.warn(`[${strategy.symbol}] 롱 rule 오류: ${err}`);
+                const rules = params.longEntryRules ?? [];
+                for (const r of rules) {
+                    const e = (0, strategy_rule_evaluator_1.validateRule)(r);
+                    if (e) {
+                        this.logger.warn(`롱 rule: ${e}`);
                         return;
                     }
                 }
-                longSignal = this.evaluator.evaluate(longRules, klines, evalMode, minScore).signal;
+                longSignal = this.evaluator.evaluate(rules, klines, evalMode, minScore).signal;
             }
             if (strategy.allowShort) {
-                const shortRules = params.shortEntryRules ?? [];
-                for (const r of shortRules) {
-                    const err = (0, strategy_rule_evaluator_1.validateRule)(r);
-                    if (err) {
-                        this.logger.warn(`[${strategy.symbol}] 숏 rule 오류: ${err}`);
+                const rules = params.shortEntryRules ?? [];
+                for (const r of rules) {
+                    const e = (0, strategy_rule_evaluator_1.validateRule)(r);
+                    if (e) {
+                        this.logger.warn(`숏 rule: ${e}`);
                         return;
                     }
                 }
-                shortSignal = this.evaluator.evaluate(shortRules, klines, evalMode, minScore).signal;
+                shortSignal = this.evaluator.evaluate(rules, klines, evalMode, minScore).signal;
             }
             if (longSignal && shortSignal) {
                 await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'CONFLICTING_SIGNALS');
@@ -266,11 +274,11 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 directions.push('LONG');
             if (shortSignal)
                 directions.push('SHORT');
-            for (const direction of directions) {
+            for (const dir of directions) {
                 const guard = await this.riskGuard(userId, strategy);
                 if (!guard.ok)
                     continue;
-                await this.enterPosition(userId, strategy, direction, klines);
+                await this.enterPosition(userId, strategy, dir, klines);
             }
         }
         catch (e) {
@@ -284,10 +292,9 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             const price = await this.binance.getTickerPrice(symbol);
             await this.binance.setLeverage(symbol, strategy.leverage);
             await this.binance.setMarginType(symbol, strategy.marginType);
-            const rawQty = (strategy.positionSizeUsdt * strategy.leverage) / price;
-            const qty = formatQty(rawQty, filters.stepSize);
+            const qty = formatQty((strategy.positionSizeUsdt * strategy.leverage) / price, filters.stepSize);
             if (parseFloat(qty) < filters.minQty) {
-                this.logger.warn(`[${symbol}] 최소 수량 미달: ${qty} < ${filters.minQty}`);
+                this.logger.warn(`[${symbol}] 최소 수량 미달`);
                 return;
             }
             const actualNotional = parseFloat(qty) * price;
@@ -310,9 +317,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                         if (['FILLED', 'PARTIALLY_FILLED'].includes(confirmed.status))
                             break;
                     }
-                    catch (e) {
-                        this.logger.warn(`[${symbol}] getOrderDetail 실패 (${i + 1}/3): ${e.message}`);
-                    }
+                    catch { }
                 }
             }
             let fillPrice = parseFloat(confirmed.avgPrice ?? confirmed.price ?? String(price));
@@ -326,10 +331,10 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                         fillPrice = parseFloat(openPos.entryPrice);
                         filledQty = Math.abs(parseFloat(openPos.positionAmt));
                         orderStatus = 'FILLED';
-                        this.logger.warn(`[${symbol}] 주문 상태 불명확 → 포지션 기준 FILLED 처리`);
+                        this.logger.warn(`[${symbol}] 포지션 기준 FILLED 처리`);
                     }
                     else {
-                        await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'ENTRY_ORDER_STATUS_UNKNOWN', { orderId, confirmedStatus: orderStatus });
+                        await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'ENTRY_ORDER_STATUS_UNKNOWN', { orderId });
                         await this.haltEngine(userId, 'ENTRY_ORDER_STATUS_UNKNOWN');
                         return;
                     }
@@ -344,7 +349,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 data: {
                     userId,
                     strategyId: strategy.id ?? null,
-                    binanceOrderId: String(orderId ?? ''),
+                    binanceOrderId: toOrderId(orderId),
                     symbol,
                     side: side,
                     positionSide: 'BOTH',
@@ -362,16 +367,15 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             this.logger.log(`[${symbol}] ${direction} 진입 — qty: ${qty}, price: ${fillPrice}`);
             if (['FILLED', 'PARTIALLY_FILLED'].includes(orderStatus)) {
                 await this.prisma.engineState.updateMany({
-                    where: { userId },
-                    data: { dailyTrades: { increment: 1 } },
+                    where: { userId }, data: { dailyTrades: { increment: 1 } },
                 }).catch(() => { });
             }
             const closeSide = side === 'BUY' ? 'SELL' : 'BUY';
-            const dir = direction === 'LONG' ? 1 : -1;
+            const pDir = direction === 'LONG' ? 1 : -1;
             let tpOk = strategy.takeProfitPct <= 0;
             let slOk = strategy.stopLossPct <= 0;
             if (strategy.takeProfitPct > 0) {
-                const tp = formatPrice(fillPrice * (1 + dir * strategy.takeProfitPct / 100), filters.tickSize);
+                const tp = formatPrice(fillPrice * (1 + pDir * strategy.takeProfitPct / 100), filters.tickSize);
                 try {
                     const tpRes = await this.binance.placeOrder({
                         symbol, side: closeSide, positionSide: 'BOTH',
@@ -380,7 +384,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                     await this.prisma.order.create({
                         data: {
                             userId, strategyId: strategy.id ?? null,
-                            binanceOrderId: String(tpRes.orderId ?? ''),
+                            binanceOrderId: toOrderId(tpRes.orderId),
                             symbol, side: closeSide, positionSide: 'BOTH',
                             orderType: 'TAKE_PROFIT_MARKET',
                             status: (tpRes.status ?? 'NEW'),
@@ -399,7 +403,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 }
             }
             if (strategy.stopLossPct > 0) {
-                const sl = formatPrice(fillPrice * (1 - dir * strategy.stopLossPct / 100), filters.tickSize);
+                const sl = formatPrice(fillPrice * (1 - pDir * strategy.stopLossPct / 100), filters.tickSize);
                 try {
                     const slRes = await this.binance.placeOrder({
                         symbol, side: closeSide, positionSide: 'BOTH',
@@ -408,7 +412,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                     await this.prisma.order.create({
                         data: {
                             userId, strategyId: strategy.id ?? null,
-                            binanceOrderId: String(slRes.orderId ?? ''),
+                            binanceOrderId: toOrderId(slRes.orderId),
                             symbol, side: closeSide, positionSide: 'BOTH',
                             orderType: 'STOP_MARKET',
                             status: (slRes.status ?? 'NEW'),

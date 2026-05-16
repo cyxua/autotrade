@@ -21,6 +21,7 @@ export declare class EngineService {
             dailyTrades: number;
             dailyLossDate: Date | null;
             consecLossCount: number;
+            lastPnlSyncAt: Date | null;
         };
         activeStrategies: number;
     }>;

@@ -68,6 +68,7 @@ export declare class RiskService {
         dailyTrades: number;
         dailyLossDate: Date | null;
         consecLossCount: number;
+        lastPnlSyncAt: Date | null;
     }, never, import("@prisma/client/runtime/library").DefaultArgs>;
     resetConsecLoss(userId: string): import(".prisma/client").Prisma.Prisma__EngineStateClient<{
         id: string;
@@ -82,5 +83,6 @@ export declare class RiskService {
         dailyTrades: number;
         dailyLossDate: Date | null;
         consecLossCount: number;
+        lastPnlSyncAt: Date | null;
     }, never, import("@prisma/client/runtime/library").DefaultArgs>;
 }

@@ -70,6 +70,7 @@ export declare class RiskController {
             dailyTrades: number;
             dailyLossDate: Date | null;
             consecLossCount: number;
+            lastPnlSyncAt: Date | null;
         };
     }>;
     resetConsec(u: any): Promise<{
@@ -87,6 +88,7 @@ export declare class RiskController {
             dailyTrades: number;
             dailyLossDate: Date | null;
             consecLossCount: number;
+            lastPnlSyncAt: Date | null;
         };
     }>;
 }
