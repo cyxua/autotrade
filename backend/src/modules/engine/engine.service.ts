@@ -52,32 +52,37 @@ export class EngineService {
     });
     this.strategyEngine.stopEngine(userId);
 
-    // 활성 전략 심볼 수집
     const strategies = await this.prisma.strategy.findMany({
       where: { userId, enabled: true }, select: { symbol: true },
     });
     const strategySymbols = [...new Set(strategies.map(s => s.symbol))];
 
-    // cancelAllOrdersStrict: 전략 심볼 + 오픈 포지션 심볼
+    // ── 항목 5: positionSymbols 조회 실패 명시적 기록 ────────────
     let cancelResult = { canceled: [] as string[], cancelErrors: [] as { symbol: string; error: string }[] };
     try {
-      // 오픈 포지션 심볼 추가
       let positionSymbols: string[] = [];
       try {
         const positions = await this.binance.getPositionsStrict();
         positionSymbols = positions
           .filter((p: any) => parseFloat(p.positionAmt) !== 0)
           .map((p: any) => p.symbol as string);
-      } catch {}
+      } catch (e: any) {
+        // 포지션 조회 실패를 cancelErrors에 명시적으로 기록
+        cancelResult.cancelErrors.push({ symbol: '_POSITION_FETCH_', error: e.message });
+        this.logger.error('긴급 정지 — 포지션 심볼 조회 실패 (전략 심볼만으로 취소 진행)', e.message);
+      }
       const allSymbols = [...new Set([...strategySymbols, ...positionSymbols])];
-      cancelResult = await this.binance.cancelAllOrdersStrict(allSymbols);
+      const result = await this.binance.cancelAllOrdersStrict(allSymbols);
+      cancelResult.canceled      = result.canceled;
+      cancelResult.cancelErrors  = [...cancelResult.cancelErrors, ...result.cancelErrors];
     } catch (e: any) {
-      this.logger.error('주문 취소 실패', e.message);
+      cancelResult.cancelErrors.push({ symbol: '_CANCEL_ALL_', error: e.message });
+      this.logger.error('주문 전체 취소 실패', e.message);
     }
 
     // 포지션 청산
     let closedPositions = 0;
-    const closeErrors: { symbol: string; error: string }[] = [];
+    const closeErrors:   { symbol: string; error: string }[] = [];
     let positionFetchError: string | null = null;
 
     if (closePositions) {
@@ -86,12 +91,11 @@ export class EngineService {
         positions = await this.binance.getPositionsStrict();
       } catch (e: any) {
         positionFetchError = `POSITION_FETCH_FAILED: ${e.message}`;
-        this.logger.error('긴급 정지 포지션 조회 실패', e.message);
+        this.logger.error('긴급 정지 포지션 조회 실패 — 청산 불가', e.message);
       }
 
       for (const p of positions.filter((p: any) => parseFloat(p.positionAmt) !== 0)) {
         try {
-          // stepSize 조회 실패 시 청산 주문 생략
           let filters: { stepSize: number };
           try {
             filters = await this.binance.getSymbolFilters(p.symbol);
@@ -103,11 +107,26 @@ export class EngineService {
           const posAmt    = parseFloat(p.positionAmt);
           const orderSide = posAmt > 0 ? 'SELL' : 'BUY';
           const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
-          const snapped   = Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize;
-          const qtyStr    = snapped.toFixed(precision);
-          await this.binance.placeOrder({
-            symbol: p.symbol, side: orderSide, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr,
-          });
+          const qtyStr    = (Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize).toFixed(precision);
+
+          // ── 항목 6: reduceOnly 추가 (지원 안 하면 재시도) ────────
+          try {
+            await this.binance.placeOrder({
+              symbol: p.symbol, side: orderSide, positionSide: 'BOTH',
+              type: 'MARKET', quantity: qtyStr, reduceOnly: 'true',
+            });
+          } catch (reduceErr: any) {
+            const code = reduceErr.message?.match(/code=(-?\d+)/)?.[1];
+            if (code === '-4115' || code === '-2022') {
+              // reduceOnly 미지원 — fallback 재시도
+              this.logger.warn(`[${p.symbol}] reduceOnly 거절 (code ${code}), 재시도 without reduceOnly`);
+              await this.binance.placeOrder({
+                symbol: p.symbol, side: orderSide, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr,
+              });
+            } else {
+              throw reduceErr;
+            }
+          }
           closedPositions++;
         } catch (e: any) {
           closeErrors.push({ symbol: p.symbol, error: e.message });
@@ -118,8 +137,8 @@ export class EngineService {
 
     return {
       status: 'EMERGENCY_STOPPED',
-      canceledOrders:   cancelResult.canceled.length,
-      cancelErrors:     cancelResult.cancelErrors,
+      canceledOrders: cancelResult.canceled.length,
+      cancelErrors:   cancelResult.cancelErrors,
       closedPositions,
       closeErrors,
       positionFetchError,
@@ -141,7 +160,6 @@ export class EngineService {
     const pos = positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0);
     if (!pos) return { status: 'NO_POSITION' };
 
-    // stepSize 조회 실패 시 청산 금지
     let filters: { stepSize: number };
     try {
       filters = await this.binance.getSymbolFilters(symbol);
@@ -155,10 +173,24 @@ export class EngineService {
     const posAmt    = parseFloat(pos.positionAmt);
     const side      = posAmt > 0 ? 'SELL' : 'BUY';
     const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
-    const snapped   = Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize;
-    const qtyStr    = snapped.toFixed(precision);
+    const qtyStr    = (Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize).toFixed(precision);
 
-    await this.binance.placeOrder({ symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr });
+    // ── 항목 6: reduceOnly 추가 ───────────────────────────────────
+    try {
+      await this.binance.placeOrder({
+        symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr, reduceOnly: 'true',
+      });
+    } catch (reduceErr: any) {
+      const code = reduceErr.message?.match(/code=(-?\d+)/)?.[1];
+      if (code === '-4115' || code === '-2022') {
+        this.logger.warn(`[${symbol}] reduceOnly 거절 (code ${code}), 재시도 without reduceOnly`);
+        await this.binance.placeOrder({
+          symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr,
+        });
+      } else {
+        throw new BadRequestException({ code: 'CLOSE_ORDER_FAILED', message: reduceErr.message });
+      }
+    }
     return { status: 'CLOSED', symbol, quantity: qtyStr };
   }
 }

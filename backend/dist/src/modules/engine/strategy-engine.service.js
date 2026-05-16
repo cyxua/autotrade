@@ -32,6 +32,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
     evaluator;
     logger = new common_1.Logger(StrategyEngineService_1.name);
     timers = new Map();
+    lastPnlSyncAt = new Map();
     constructor(prisma, binance, indicator, evaluator) {
         this.prisma = prisma;
         this.binance = binance;
@@ -81,9 +82,61 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             for (const strategy of strategies) {
                 await this.processStrategy(userId, strategy);
             }
+            await this.syncPnlStats(userId);
         }
         catch (e) {
             this.logger.error('스캔 오류', e);
+        }
+    }
+    async syncPnlStats(userId) {
+        try {
+            const lastSync = this.lastPnlSyncAt.get(userId) ?? (Date.now() - 3600_000);
+            const now = Date.now();
+            const incomes = await this.binance.getIncome('', 'REALIZED_PNL', lastSync + 1, 1000);
+            if (incomes.length === 0) {
+                this.lastPnlSyncAt.set(userId, now);
+                return;
+            }
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const todayPnl = incomes
+                .filter(i => i.time >= todayStart.getTime())
+                .reduce((s, i) => s + parseFloat(i.income), 0);
+            const state = await this.prisma.engineState.findFirst({ where: { userId } });
+            let consecLoss = state?.consecLossCount ?? 0;
+            for (const income of incomes) {
+                const pnl = parseFloat(income.income);
+                if (pnl < 0)
+                    consecLoss++;
+                else if (pnl > 0)
+                    consecLoss = 0;
+            }
+            await this.prisma.engineState.updateMany({
+                where: { userId },
+                data: { dailyPnl: { increment: todayPnl }, consecLossCount: consecLoss },
+            });
+            const strategies = await this.prisma.strategy.findMany({ where: { userId } });
+            for (const strat of strategies) {
+                const stratIncomes = incomes.filter((i) => i.symbol === strat.symbol);
+                if (stratIncomes.length === 0)
+                    continue;
+                const pnlSum = stratIncomes.reduce((s, i) => s + parseFloat(i.income), 0);
+                const winCount = stratIncomes.filter((i) => parseFloat(i.income) > 0).length;
+                await this.prisma.strategy.update({
+                    where: { id: strat.id },
+                    data: {
+                        totalPnl: { increment: pnlSum },
+                        totalTrades: { increment: stratIncomes.length },
+                        winTrades: { increment: winCount },
+                        lastSignalAt: new Date(),
+                    },
+                });
+            }
+            this.lastPnlSyncAt.set(userId, now);
+            this.logger.log(`[${userId}] PnL 동기화 완료: ${incomes.length}건, 오늘 PnL: ${todayPnl.toFixed(4)}`);
+        }
+        catch (e) {
+            this.logger.warn(`[syncPnlStats] 오류 (무시): ${e.message}`);
         }
     }
     async riskGuard(userId, strategy) {
@@ -161,12 +214,10 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
     async processStrategy(userId, strategy) {
         try {
             const params = (strategy.params ?? {});
-            if ((params.exitRules ?? []).length > 0) {
+            if ((params.exitRules ?? []).length > 0)
                 this.logger.warn(`[${strategy.symbol}] exitRules 설정됨 — 현재 엔진에서 미평가`);
-            }
             const tfMap = { m1: '1m', m5: '5m', m15: '15m', h1: '1h', h4: '4h' };
-            const interval = tfMap[strategy.timeframe] ?? '15m';
-            let klines = await this.binance.getKlines(strategy.symbol, interval, 250);
+            let klines = await this.binance.getKlines(strategy.symbol, tfMap[strategy.timeframe] ?? '15m', 250);
             if (params.useClosedCandleOnly !== false) {
                 const now = Date.now();
                 klines = klines.filter(k => k.closeTime < now);
@@ -178,12 +229,9 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             const evalMode = params.evalMode ?? 'ALL';
             const minScore = params.minScore ?? 60;
             const blockRules = params.blockRules ?? [];
-            if (blockRules.length > 0) {
-                const blockResult = this.evaluator.evaluate(blockRules, klines, 'ANY');
-                if (blockResult.signal) {
-                    this.logger.log(`[${strategy.symbol}] 차단 조건 발동 — 스킵`);
-                    return;
-                }
+            if (blockRules.length > 0 && this.evaluator.evaluate(blockRules, klines, 'ANY').signal) {
+                this.logger.log(`[${strategy.symbol}] 차단 조건 발동 — 스킵`);
+                return;
             }
             let longSignal = false;
             let shortSignal = false;
@@ -210,7 +258,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 shortSignal = this.evaluator.evaluate(shortRules, klines, evalMode, minScore).signal;
             }
             if (longSignal && shortSignal) {
-                await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'CONFLICTING_SIGNALS', { longSignal, shortSignal });
+                await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'CONFLICTING_SIGNALS');
                 return;
             }
             const directions = [];
@@ -229,18 +277,22 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             this.logger.error(`[${strategy.symbol}] processStrategy 오류: ${e.message}`);
         }
     }
-    async enterPosition(userId, strategy, direction, klines) {
+    async enterPosition(userId, strategy, direction, _klines) {
         const symbol = strategy.symbol;
         try {
             const filters = await this.binance.getSymbolFilters(symbol);
             const price = await this.binance.getTickerPrice(symbol);
             await this.binance.setLeverage(symbol, strategy.leverage);
             await this.binance.setMarginType(symbol, strategy.marginType);
-            const notional = strategy.positionSizeUsdt * strategy.leverage;
-            const rawQty = notional / price;
+            const rawQty = (strategy.positionSizeUsdt * strategy.leverage) / price;
             const qty = formatQty(rawQty, filters.stepSize);
             if (parseFloat(qty) < filters.minQty) {
                 this.logger.warn(`[${symbol}] 최소 수량 미달: ${qty} < ${filters.minQty}`);
+                return;
+            }
+            const actualNotional = parseFloat(qty) * price;
+            if (actualNotional < filters.minNotional) {
+                await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'MIN_NOTIONAL_AFTER_ROUNDING', { qty, price, actualNotional, minNotional: filters.minNotional });
                 return;
             }
             const side = direction === 'LONG' ? 'BUY' : 'SELL';
@@ -274,15 +326,17 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                         fillPrice = parseFloat(openPos.entryPrice);
                         filledQty = Math.abs(parseFloat(openPos.positionAmt));
                         orderStatus = 'FILLED';
-                        this.logger.warn(`[${symbol}] 주문 상태 불명확 → 포지션 기준으로 FILLED 처리`);
+                        this.logger.warn(`[${symbol}] 주문 상태 불명확 → 포지션 기준 FILLED 처리`);
                     }
                     else {
-                        this.logger.error(`[${symbol}] 주문 체결 불명확, 포지션 없음 — 스킵`);
+                        await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'ENTRY_ORDER_STATUS_UNKNOWN', { orderId, confirmedStatus: orderStatus });
+                        await this.haltEngine(userId, 'ENTRY_ORDER_STATUS_UNKNOWN');
                         return;
                     }
                 }
                 catch (e) {
-                    this.logger.error(`[${symbol}] 포지션 확인 실패: ${e.message}`);
+                    await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'ENTRY_ORDER_STATUS_UNKNOWN', { orderId, error: e.message });
+                    await this.haltEngine(userId, 'ENTRY_ORDER_STATUS_UNKNOWN');
                     return;
                 }
             }
@@ -291,7 +345,9 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                     userId,
                     strategyId: strategy.id ?? null,
                     binanceOrderId: String(orderId ?? ''),
-                    symbol, side: side, positionSide: 'BOTH',
+                    symbol,
+                    side: side,
+                    positionSide: 'BOTH',
                     orderType: 'MARKET',
                     status: orderStatus,
                     quantity: parseFloat(qty),
@@ -310,33 +366,59 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                     data: { dailyTrades: { increment: 1 } },
                 }).catch(() => { });
             }
+            const closeSide = side === 'BUY' ? 'SELL' : 'BUY';
+            const dir = direction === 'LONG' ? 1 : -1;
             let tpOk = strategy.takeProfitPct <= 0;
             let slOk = strategy.stopLossPct <= 0;
             if (strategy.takeProfitPct > 0) {
-                const dir = direction === 'LONG' ? 1 : -1;
                 const tp = formatPrice(fillPrice * (1 + dir * strategy.takeProfitPct / 100), filters.tickSize);
                 try {
-                    await this.binance.placeOrder({
-                        symbol, side: side === 'BUY' ? 'SELL' : 'BUY',
-                        positionSide: 'BOTH', type: 'TAKE_PROFIT_MARKET',
-                        stopPrice: tp, closePosition: 'true',
+                    const tpRes = await this.binance.placeOrder({
+                        symbol, side: closeSide, positionSide: 'BOTH',
+                        type: 'TAKE_PROFIT_MARKET', stopPrice: tp, closePosition: 'true',
                     });
+                    await this.prisma.order.create({
+                        data: {
+                            userId, strategyId: strategy.id ?? null,
+                            binanceOrderId: String(tpRes.orderId ?? ''),
+                            symbol, side: closeSide, positionSide: 'BOTH',
+                            orderType: 'TAKE_PROFIT_MARKET',
+                            status: (tpRes.status ?? 'NEW'),
+                            quantity: parseFloat(qty),
+                            stopPrice: parseFloat(tp),
+                            leverage: strategy.leverage,
+                            marginType: strategy.marginType,
+                            exitReason: 'TAKE_PROFIT',
+                        },
+                    }).catch(() => { });
                     this.logger.log(`[${symbol}] TP: ${tp}`);
                     tpOk = true;
                 }
                 catch (e) {
-                    this.logger.error(`[${symbol}] TP 실패: ${e.message}`);
+                    await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'TP_ORDER_FAILED', { tp, fillPrice, direction, error: e.message });
                 }
             }
             if (strategy.stopLossPct > 0) {
-                const dir = direction === 'LONG' ? 1 : -1;
                 const sl = formatPrice(fillPrice * (1 - dir * strategy.stopLossPct / 100), filters.tickSize);
                 try {
-                    await this.binance.placeOrder({
-                        symbol, side: side === 'BUY' ? 'SELL' : 'BUY',
-                        positionSide: 'BOTH', type: 'STOP_MARKET',
-                        stopPrice: sl, closePosition: 'true',
+                    const slRes = await this.binance.placeOrder({
+                        symbol, side: closeSide, positionSide: 'BOTH',
+                        type: 'STOP_MARKET', stopPrice: sl, closePosition: 'true',
                     });
+                    await this.prisma.order.create({
+                        data: {
+                            userId, strategyId: strategy.id ?? null,
+                            binanceOrderId: String(slRes.orderId ?? ''),
+                            symbol, side: closeSide, positionSide: 'BOTH',
+                            orderType: 'STOP_MARKET',
+                            status: (slRes.status ?? 'NEW'),
+                            quantity: parseFloat(qty),
+                            stopPrice: parseFloat(sl),
+                            leverage: strategy.leverage,
+                            marginType: strategy.marginType,
+                            exitReason: 'STOP_LOSS',
+                        },
+                    }).catch(() => { });
                     this.logger.log(`[${symbol}] SL: ${sl}`);
                     slOk = true;
                 }

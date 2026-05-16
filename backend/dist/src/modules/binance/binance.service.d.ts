@@ -43,5 +43,6 @@ export declare class BinanceService {
             error: string;
         }[];
     }>;
+    getIncome(symbol: string, incomeType: string, startTime?: number, limit?: number): Promise<any[]>;
     getTickerPrice(symbol: string): Promise<number>;
 }

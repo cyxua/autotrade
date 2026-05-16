@@ -74,12 +74,18 @@ let EngineService = EngineService_1 = class EngineService {
                     .filter((p) => parseFloat(p.positionAmt) !== 0)
                     .map((p) => p.symbol);
             }
-            catch { }
+            catch (e) {
+                cancelResult.cancelErrors.push({ symbol: '_POSITION_FETCH_', error: e.message });
+                this.logger.error('긴급 정지 — 포지션 심볼 조회 실패 (전략 심볼만으로 취소 진행)', e.message);
+            }
             const allSymbols = [...new Set([...strategySymbols, ...positionSymbols])];
-            cancelResult = await this.binance.cancelAllOrdersStrict(allSymbols);
+            const result = await this.binance.cancelAllOrdersStrict(allSymbols);
+            cancelResult.canceled = result.canceled;
+            cancelResult.cancelErrors = [...cancelResult.cancelErrors, ...result.cancelErrors];
         }
         catch (e) {
-            this.logger.error('주문 취소 실패', e.message);
+            cancelResult.cancelErrors.push({ symbol: '_CANCEL_ALL_', error: e.message });
+            this.logger.error('주문 전체 취소 실패', e.message);
         }
         let closedPositions = 0;
         const closeErrors = [];
@@ -91,7 +97,7 @@ let EngineService = EngineService_1 = class EngineService {
             }
             catch (e) {
                 positionFetchError = `POSITION_FETCH_FAILED: ${e.message}`;
-                this.logger.error('긴급 정지 포지션 조회 실패', e.message);
+                this.logger.error('긴급 정지 포지션 조회 실패 — 청산 불가', e.message);
             }
             for (const p of positions.filter((p) => parseFloat(p.positionAmt) !== 0)) {
                 try {
@@ -107,11 +113,25 @@ let EngineService = EngineService_1 = class EngineService {
                     const posAmt = parseFloat(p.positionAmt);
                     const orderSide = posAmt > 0 ? 'SELL' : 'BUY';
                     const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
-                    const snapped = Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize;
-                    const qtyStr = snapped.toFixed(precision);
-                    await this.binance.placeOrder({
-                        symbol: p.symbol, side: orderSide, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr,
-                    });
+                    const qtyStr = (Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize).toFixed(precision);
+                    try {
+                        await this.binance.placeOrder({
+                            symbol: p.symbol, side: orderSide, positionSide: 'BOTH',
+                            type: 'MARKET', quantity: qtyStr, reduceOnly: 'true',
+                        });
+                    }
+                    catch (reduceErr) {
+                        const code = reduceErr.message?.match(/code=(-?\d+)/)?.[1];
+                        if (code === '-4115' || code === '-2022') {
+                            this.logger.warn(`[${p.symbol}] reduceOnly 거절 (code ${code}), 재시도 without reduceOnly`);
+                            await this.binance.placeOrder({
+                                symbol: p.symbol, side: orderSide, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr,
+                            });
+                        }
+                        else {
+                            throw reduceErr;
+                        }
+                    }
                     closedPositions++;
                 }
                 catch (e) {
@@ -156,9 +176,24 @@ let EngineService = EngineService_1 = class EngineService {
         const posAmt = parseFloat(pos.positionAmt);
         const side = posAmt > 0 ? 'SELL' : 'BUY';
         const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
-        const snapped = Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize;
-        const qtyStr = snapped.toFixed(precision);
-        await this.binance.placeOrder({ symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr });
+        const qtyStr = (Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize).toFixed(precision);
+        try {
+            await this.binance.placeOrder({
+                symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr, reduceOnly: 'true',
+            });
+        }
+        catch (reduceErr) {
+            const code = reduceErr.message?.match(/code=(-?\d+)/)?.[1];
+            if (code === '-4115' || code === '-2022') {
+                this.logger.warn(`[${symbol}] reduceOnly 거절 (code ${code}), 재시도 without reduceOnly`);
+                await this.binance.placeOrder({
+                    symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr,
+                });
+            }
+            else {
+                throw new common_1.BadRequestException({ code: 'CLOSE_ORDER_FAILED', message: reduceErr.message });
+            }
+        }
         return { status: 'CLOSED', symbol, quantity: qtyStr };
     }
 };

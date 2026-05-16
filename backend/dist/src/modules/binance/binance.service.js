@@ -239,6 +239,14 @@ let BinanceService = BinanceService_1 = class BinanceService {
         }
         return { canceled, cancelErrors };
     }
+    async getIncome(symbol, incomeType, startTime, limit = 1000) {
+        const params = { incomeType, limit };
+        if (symbol)
+            params.symbol = symbol;
+        if (startTime)
+            params.startTime = startTime;
+        return this.signedRequest('GET', '/fapi/v1/income', params);
+    }
     async getTickerPrice(symbol) {
         const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
         return parseFloat(res.data.price);

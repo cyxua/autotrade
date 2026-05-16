@@ -191,6 +191,17 @@ export class BinanceService {
     return { canceled, cancelErrors };
   }
 
+
+  // 손익 이력 조회 (REALIZED_PNL 등)
+  async getIncome(
+    symbol: string, incomeType: string, startTime?: number, limit = 1000,
+  ): Promise<any[]> {
+    const params: Record<string, any> = { incomeType, limit };
+    if (symbol) params.symbol = symbol;
+    if (startTime) params.startTime = startTime;
+    return this.signedRequest('GET', '/fapi/v1/income', params);
+  }
+
   async getTickerPrice(symbol: string): Promise<number> {
     const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
     return parseFloat(res.data.price);
