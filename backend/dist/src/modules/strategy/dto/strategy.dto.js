@@ -12,6 +12,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateStrategyDto = void 0;
 const class_validator_1 = require("class-validator");
 class CreateStrategyDto {
+    name;
+    type;
+    symbol;
+    timeframe;
+    positionSizeUsdt;
+    leverage;
+    marginType;
+    allowLong;
+    allowShort;
+    takeProfitPct;
+    stopLossPct;
+    trailingStopPct;
+    maxPositions;
+    maxDailyLoss;
+    maxDailyTrades;
+    stopOnConsecLoss;
+    params;
 }
 exports.CreateStrategyDto = CreateStrategyDto;
 __decorate([

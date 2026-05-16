@@ -17,11 +17,14 @@ const binance_service_1 = require("../binance/binance.service");
 const common_2 = require("@nestjs/common");
 const strategy_engine_service_1 = require("./strategy-engine.service");
 let EngineService = EngineService_1 = class EngineService {
+    prisma;
+    binance;
+    strategyEngine;
+    logger = new common_1.Logger(EngineService_1.name);
     constructor(prisma, binance, strategyEngine) {
         this.prisma = prisma;
         this.binance = binance;
         this.strategyEngine = strategyEngine;
-        this.logger = new common_1.Logger(EngineService_1.name);
     }
     async getStatus(userId) {
         const state = await this.prisma.engineState.findFirst({ where: { userId } });

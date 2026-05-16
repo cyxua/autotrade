@@ -47,9 +47,10 @@ exports.NotificationService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 let NotificationService = NotificationService_1 = class NotificationService {
+    prisma;
+    logger = new common_1.Logger(NotificationService_1.name);
     constructor(prisma) {
         this.prisma = prisma;
-        this.logger = new common_1.Logger(NotificationService_1.name);
     }
     async send(userId, event, message) {
         try {

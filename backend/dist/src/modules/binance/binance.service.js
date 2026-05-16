@@ -54,18 +54,21 @@ const crypto = __importStar(require("crypto"));
 const prisma_service_1 = require("../../prisma/prisma.service");
 const crypto_util_1 = require("../../common/utils/crypto.util");
 let BinanceService = BinanceService_1 = class BinanceService {
+    config;
+    prisma;
+    _posCache = null;
+    logger = new common_1.Logger(BinanceService_1.name);
+    client;
+    mode = 'testnet';
+    apiKey = '';
+    apiSecret = '';
+    BASE_URLS = {
+        testnet: 'https://testnet.binancefuture.com',
+        live: 'https://fapi.binance.com',
+    };
     constructor(config, prisma) {
         this.config = config;
         this.prisma = prisma;
-        this._posCache = null;
-        this.logger = new common_1.Logger(BinanceService_1.name);
-        this.mode = 'testnet';
-        this.apiKey = '';
-        this.apiSecret = '';
-        this.BASE_URLS = {
-            testnet: 'https://testnet.binancefuture.com',
-            live: 'https://fapi.binance.com',
-        };
         this.initClient('testnet');
     }
     initClient(mode) {

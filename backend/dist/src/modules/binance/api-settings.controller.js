@@ -19,6 +19,7 @@ const current_user_decorator_1 = require("../../common/decorators/current-user.d
 const api_settings_service_1 = require("./api-settings.service");
 const api_config_dto_1 = require("./dto/api-config.dto");
 let ApiSettingsController = class ApiSettingsController {
+    svc;
     constructor(svc) {
         this.svc = svc;
     }

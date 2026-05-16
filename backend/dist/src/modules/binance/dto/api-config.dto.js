@@ -12,6 +12,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChangeModeDto = exports.SaveApiConfigDto = void 0;
 const class_validator_1 = require("class-validator");
 class SaveApiConfigDto {
+    apiKey;
+    secretKey;
+    tradingMode;
 }
 exports.SaveApiConfigDto = SaveApiConfigDto;
 __decorate([
@@ -29,6 +32,8 @@ __decorate([
     __metadata("design:type", String)
 ], SaveApiConfigDto.prototype, "tradingMode", void 0);
 class ChangeModeDto {
+    mode;
+    confirm;
 }
 exports.ChangeModeDto = ChangeModeDto;
 __decorate([

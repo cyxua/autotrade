@@ -18,6 +18,7 @@ const engine_service_1 = require("./engine.service");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 let EngineController = class EngineController {
+    engine;
     constructor(engine) {
         this.engine = engine;
     }

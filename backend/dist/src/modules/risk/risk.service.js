@@ -13,6 +13,7 @@ exports.RiskService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 let RiskService = class RiskService {
+    prisma;
     constructor(prisma) {
         this.prisma = prisma;
     }

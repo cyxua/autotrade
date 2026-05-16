@@ -13,23 +13,29 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StrategyEngineService = void 0;
 function formatQty(qty, step) {
     const precision = step < 1 ? (String(step).split('.')[1]?.length ?? 0) : 0;
-    const snapped = Math.floor(qty / step) * step;
-    return snapped.toFixed(precision);
+    return (Math.floor(qty / step) * step).toFixed(precision);
 }
 function formatPrice(price, tickSize) {
     const precision = tickSize < 1 ? (String(tickSize).split('.')[1]?.length ?? 0) : 0;
-    const snapped = Math.floor(price / tickSize) * tickSize;
-    return snapped.toFixed(precision);
+    return (Math.floor(price / tickSize) * tickSize).toFixed(precision);
 }
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const binance_service_1 = require("../binance/binance.service");
+const indicator_service_1 = require("./indicator.service");
+const strategy_rule_evaluator_1 = require("./strategy-rule-evaluator");
 let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineService {
-    constructor(prisma, binance) {
+    prisma;
+    binance;
+    indicator;
+    evaluator;
+    logger = new common_1.Logger(StrategyEngineService_1.name);
+    timers = new Map();
+    constructor(prisma, binance, indicator, evaluator) {
         this.prisma = prisma;
         this.binance = binance;
-        this.logger = new common_1.Logger(StrategyEngineService_1.name);
-        this.timers = new Map();
+        this.indicator = indicator;
+        this.evaluator = evaluator;
     }
     async startEngine(userId) {
         this.stopEngine(userId);
@@ -63,7 +69,9 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             const state = await this.prisma.engineState.findFirst({ where: { userId } });
             if (!state || state.status !== 'RUNNING')
                 return;
-            const strategies = await this.prisma.strategy.findMany({ where: { userId, enabled: true } });
+            const strategies = await this.prisma.strategy.findMany({
+                where: { userId, enabled: true },
+            });
             for (const strategy of strategies) {
                 await this.processStrategy(userId, strategy);
             }
@@ -101,9 +109,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             return { ok: false, reason: 'CONSEC_LOSS_EXCEEDED' };
         try {
             const balances = await this.binance.getBalance();
-            const usdt = Array.isArray(balances)
-                ? balances.find((b) => b.asset === 'USDT')
-                : balances;
+            const usdt = Array.isArray(balances) ? balances.find((b) => b.asset === 'USDT') : balances;
             const available = parseFloat(usdt?.availableBalance ?? usdt?.balance ?? '0');
             if (available < (strategy.positionSizeUsdt ?? 100))
                 return { ok: false, reason: 'INSUFFICIENT_BALANCE' };
@@ -115,56 +121,66 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
     }
     async processStrategy(userId, strategy) {
         try {
-            const params = strategy.params;
-            const tf = strategy.timeframe.replace(/^([a-zA-Z]+)(\d+)$/, '$2$1');
-            const klines = await this.binance.getKlines(strategy.symbol, tf, 50);
-            if (!klines || klines.length < 20)
+            const params = (strategy.params ?? {});
+            const validationError = this.validateStrategyParams(strategy.symbol, params);
+            if (validationError) {
+                this.logger.warn(`[${strategy.symbol}] 전략 설정 오류 — 진입 차단: ${validationError}`);
                 return;
-            const closes = klines.map((k) => Number(k.close));
-            if (strategy.type === 'RSI_EXTREME') {
-                const period = params?.rsiPeriod ?? 14;
-                const overbought = params?.overboughtLevel ?? params?.overbought ?? 70;
-                const oversold = params?.oversoldLevel ?? params?.oversold ?? 30;
-                const rsi = this.calcRSI(closes, period);
-                this.logger.log(`[${strategy.symbol}] RSI: ${rsi.toFixed(2)} (ob:${overbought} os:${oversold})`);
-                if (rsi < oversold && strategy.allowLong)
-                    await this.placeOrder(userId, strategy, 'BUY', 'RSI_OVERSOLD');
-                else if (rsi > overbought && strategy.allowShort)
-                    await this.placeOrder(userId, strategy, 'SELL', 'RSI_OVERBOUGHT');
             }
-            else if (strategy.type === 'MA_CROSS') {
-                const short = params?.shortPeriod ?? 9;
-                const long = params?.longPeriod ?? 21;
-                const emaShort = this.calcEMA(closes, short);
-                const emaLong = this.calcEMA(closes, long);
-                const prevShort = this.calcEMA(closes.slice(0, -1), short);
-                const prevLong = this.calcEMA(closes.slice(0, -1), long);
-                if (prevShort <= prevLong && emaShort > emaLong && strategy.allowLong)
-                    await this.placeOrder(userId, strategy, 'BUY', 'EMA_GOLDEN_CROSS');
-                else if (prevShort >= prevLong && emaShort < emaLong && strategy.allowShort)
-                    await this.placeOrder(userId, strategy, 'SELL', 'EMA_DEAD_CROSS');
+            const tf = strategy.timeframe.replace(/^([a-zA-Z]+)(\d+)$/, '$2$1');
+            const klines = await this.binance.getKlines(strategy.symbol, tf, 200);
+            if (!klines || klines.length < 30) {
+                this.logger.warn(`[${strategy.symbol}] klines 부족 (${klines?.length ?? 0})`);
+                return;
             }
-            else if (strategy.type === 'BOLLINGER_BREAKOUT') {
-                const period = params?.bbPeriod ?? params?.period ?? 20;
-                const mult = params?.bbStdDev ?? params?.multiplier ?? 2.0;
-                if (closes.length < period + 1)
+            const evalMode = params.evalMode ?? 'ALL';
+            const minScore = params.minScore ?? 60;
+            if ((params.blockRules ?? []).length > 0) {
+                const blockResult = this.evaluator.evaluate(params.blockRules, klines, 'ANY');
+                if (blockResult.signal) {
+                    this.logger.log(`[${strategy.symbol}] blockRule 발동 — 진입 차단 (score:${blockResult.score})`);
                     return;
-                const slice = closes.slice(-period);
-                const mean = slice.reduce((a, b) => a + b, 0) / period;
-                const std = Math.sqrt(slice.reduce((s, v) => s + (v - mean) ** 2, 0) / period);
-                const upper = mean + mult * std;
-                const lower = mean - mult * std;
-                const price = closes[closes.length - 1];
-                this.logger.log(`[${strategy.symbol}] BB upper:${upper.toFixed(4)} lower:${lower.toFixed(4)} price:${price.toFixed(4)}`);
-                if (price > upper && strategy.allowLong)
-                    await this.placeOrder(userId, strategy, 'BUY', 'BB_UPPER_BREAKOUT');
-                else if (price < lower && strategy.allowShort)
-                    await this.placeOrder(userId, strategy, 'SELL', 'BB_LOWER_BREAKOUT');
+                }
+            }
+            const longRules = params.longEntryRules ?? [];
+            if (longRules.length > 0 && strategy.allowLong) {
+                const result = this.evaluator.evaluate(longRules, klines, evalMode, minScore);
+                this.logger.log(`[${strategy.symbol}] LONG 평가 signal:${result.signal} score:${result.score} ` +
+                    `(${result.details.map(d => `${d.type}:${d.passed ? '✓' : '✗'}`).join(' ')})`);
+                if (result.signal) {
+                    await this.placeOrder(userId, strategy, 'BUY', 'LONG_ENTRY');
+                    return;
+                }
+            }
+            const shortRules = params.shortEntryRules ?? [];
+            if (shortRules.length > 0 && strategy.allowShort) {
+                const result = this.evaluator.evaluate(shortRules, klines, evalMode, minScore);
+                this.logger.log(`[${strategy.symbol}] SHORT 평가 signal:${result.signal} score:${result.score} ` +
+                    `(${result.details.map(d => `${d.type}:${d.passed ? '✓' : '✗'}`).join(' ')})`);
+                if (result.signal) {
+                    await this.placeOrder(userId, strategy, 'SELL', 'SHORT_ENTRY');
+                }
             }
         }
         catch (e) {
             this.logger.error(`[${strategy.symbol}] 전략 처리 오류`, e);
         }
+    }
+    validateStrategyParams(symbol, params) {
+        const allRules = [
+            ...(params.longEntryRules ?? []),
+            ...(params.shortEntryRules ?? []),
+            ...(params.exitRules ?? []),
+            ...(params.blockRules ?? []),
+        ];
+        for (const rule of allRules) {
+            const err = (0, strategy_rule_evaluator_1.validateRule)(rule);
+            if (err)
+                return err;
+        }
+        if (params.evalMode === 'SCORE' && (params.minScore === undefined || params.minScore < 0 || params.minScore > 100))
+            return 'SCORE 모드에서 minScore는 0~100이어야 합니다';
+        return null;
     }
     async placeOrder(userId, strategy, side, entryReason) {
         try {
@@ -176,9 +192,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                         data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: guard.reason ?? 'UNKNOWN', detail: { entryReason } },
                     });
                 }
-                catch (logErr) {
-                    this.logger.warn('riskBlockLog 저장 실패', logErr.message);
-                }
+                catch { }
                 return;
             }
             let filters;
@@ -191,19 +205,14 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             }
             const price = await this.binance.getTickerPrice(strategy.symbol);
             const notional = (strategy.positionSizeUsdt ?? 100) * (strategy.leverage ?? 1);
-            const qty = notional / price;
-            const qtyStr = formatQty(qty, filters.stepSize);
+            const qtyStr = formatQty(notional / price, filters.stepSize);
             const qtyNum = parseFloat(qtyStr);
-            if (qtyNum <= 0) {
-                this.logger.error(`[${strategy.symbol}] 수량 0 — 주문 차단`);
-                return;
-            }
-            if (qtyNum < filters.minQty) {
-                this.logger.error(`[${strategy.symbol}] 수량 ${qtyNum} < minQty ${filters.minQty} — 주문 차단`);
+            if (qtyNum <= 0 || qtyNum < filters.minQty) {
+                this.logger.error(`[${strategy.symbol}] 수량 검증 실패: qty=${qtyNum} minQty=${filters.minQty}`);
                 return;
             }
             if (filters.minNotional > 0 && qtyNum * price < filters.minNotional) {
-                this.logger.error(`[${strategy.symbol}] notional < minNotional ${filters.minNotional} — 주문 차단`);
+                this.logger.error(`[${strategy.symbol}] MIN_NOTIONAL 미달: ${(qtyNum * price).toFixed(2)} < ${filters.minNotional}`);
                 return;
             }
             this.logger.log(`[${strategy.symbol}] ${side} 주문 시도 qty:${qtyStr} price:${price} reason:${entryReason}`);
@@ -218,28 +227,26 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             });
             const orderId = orderResult?.orderId;
             if (!orderId) {
-                this.logger.error(`[${strategy.symbol}] orderId 없음 — TP/SL 생성 중단`);
+                this.logger.error(`[${strategy.symbol}] orderId 없음`);
                 return;
             }
             if (!orderResult?.avgPrice || parseFloat(orderResult.avgPrice) === 0) {
                 try {
-                    this.logger.warn(`[${strategy.symbol}] avgPrice 없음 — orderId ${orderId} 재조회`);
                     orderResult = await this.binance.getOrderDetail(strategy.symbol, orderId);
                 }
                 catch (e) {
-                    this.logger.warn(`[${strategy.symbol}] 주문 재조회 실패: ${e.message}`);
+                    this.logger.warn(`재조회 실패: ${e.message}`);
                 }
             }
             const orderStatus = orderResult?.status;
             const executedQty = parseFloat(orderResult?.executedQty ?? '0');
             const avgFillPrice = parseFloat(orderResult?.avgPrice ?? '0');
             const isFilled = orderStatus === 'FILLED' || orderStatus === 'PARTIALLY_FILLED';
-            this.logger.log(`[${strategy.symbol}] ${side} 완료 orderId:${orderId} status:${orderStatus} executedQty:${executedQty} avgPrice:${avgFillPrice}`);
+            this.logger.log(`[${strategy.symbol}] ${side} 완료 orderId:${orderId} status:${orderStatus} avgPrice:${avgFillPrice}`);
             try {
                 await this.prisma.order.create({
                     data: {
-                        userId,
-                        strategyId: strategy.id,
+                        userId, strategyId: strategy.id,
                         binanceOrderId: String(orderId),
                         symbol: strategy.symbol,
                         side: side,
@@ -255,18 +262,16 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 });
             }
             catch (dbErr) {
-                this.logger.error(`[${strategy.symbol}] DB 주문 저장 실패 (거래는 정상)`, dbErr.message);
+                this.logger.error('DB 저장 실패', dbErr.message);
             }
             if (!isFilled) {
-                this.logger.warn(`[${strategy.symbol}] 주문 상태 ${orderStatus} — TP/SL 생성 생략`);
+                this.logger.warn(`[${strategy.symbol}] 미체결(${orderStatus}) — TP/SL 생략`);
                 return;
             }
             try {
                 await this.prisma.engineState.updateMany({ where: { userId }, data: { dailyTrades: { increment: 1 } } });
             }
-            catch (e) {
-                this.logger.error('dailyTrades 증가 실패', e.message);
-            }
+            catch { }
             await this.placeTpSl(userId, strategy, side, qtyStr, avgFillPrice, filters.tickSize);
         }
         catch (e) {
@@ -281,17 +286,15 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 const pos = positions.find((p) => p.symbol === strategy.symbol && parseFloat(p.positionAmt) !== 0);
                 if (pos) {
                     fillPrice = parseFloat(pos.entryPrice);
-                    this.logger.warn(`[${strategy.symbol}] avgPrice 없음 — entryPrice ${fillPrice} 사용`);
+                    this.logger.warn(`[${strategy.symbol}] entryPrice 사용: ${fillPrice}`);
                 }
             }
-            catch (e) {
-                this.logger.error(`[${strategy.symbol}] entryPrice 조회 실패 — 엔진 중지`);
+            catch {
                 await this.haltEngine(userId, 'ENTRY_PRICE_CHECK_FAILED');
                 return;
             }
         }
         if (fillPrice <= 0) {
-            this.logger.error(`[${strategy.symbol}] 체결가 확인 불가 — 엔진 중지`);
             await this.haltEngine(userId, 'ENTRY_PRICE_CHECK_FAILED');
             return;
         }
@@ -299,22 +302,13 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
         if ((strategy.takeProfitPct ?? 0) > 0) {
             try {
                 const tp = formatPrice(fillPrice * (1 + dir * strategy.takeProfitPct / 100), tickSize);
-                await this.binance.placeOrder({
-                    symbol: strategy.symbol,
-                    side: side === 'BUY' ? 'SELL' : 'BUY',
-                    positionSide: 'BOTH',
-                    type: 'TAKE_PROFIT_MARKET',
-                    stopPrice: tp,
-                    closePosition: 'true',
-                });
-                this.logger.log(`[${strategy.symbol}] TP 설정: ${tp}`);
+                await this.binance.placeOrder({ symbol: strategy.symbol, side: side === 'BUY' ? 'SELL' : 'BUY', positionSide: 'BOTH', type: 'TAKE_PROFIT_MARKET', stopPrice: tp, closePosition: 'true' });
+                this.logger.log(`[${strategy.symbol}] TP: ${tp}`);
             }
             catch (e) {
-                this.logger.error(`[${strategy.symbol}] TP 설정 실패`, e.message);
+                this.logger.error(`[${strategy.symbol}] TP 실패`, e.message);
                 try {
-                    await this.prisma.riskBlockLog.create({
-                        data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: 'TP_ORDER_FAILED', detail: e.message },
-                    });
+                    await this.prisma.riskBlockLog.create({ data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: 'TP_ORDER_FAILED', detail: e.message } });
                 }
                 catch { }
             }
@@ -322,57 +316,26 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
         if ((strategy.stopLossPct ?? 0) > 0) {
             try {
                 const sl = formatPrice(fillPrice * (1 - dir * strategy.stopLossPct / 100), tickSize);
-                await this.binance.placeOrder({
-                    symbol: strategy.symbol,
-                    side: side === 'BUY' ? 'SELL' : 'BUY',
-                    positionSide: 'BOTH',
-                    type: 'STOP_MARKET',
-                    stopPrice: sl,
-                    closePosition: 'true',
-                });
-                this.logger.log(`[${strategy.symbol}] SL 설정: ${sl}`);
+                await this.binance.placeOrder({ symbol: strategy.symbol, side: side === 'BUY' ? 'SELL' : 'BUY', positionSide: 'BOTH', type: 'STOP_MARKET', stopPrice: sl, closePosition: 'true' });
+                this.logger.log(`[${strategy.symbol}] SL: ${sl}`);
             }
             catch (e) {
-                this.logger.error(`[${strategy.symbol}] SL 설정 실패 — 엔진 강제 중지`, e.message);
+                this.logger.error(`[${strategy.symbol}] SL 실패 — 엔진 중지`, e.message);
                 try {
-                    await this.prisma.riskBlockLog.create({
-                        data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: 'SL_ORDER_FAILED', detail: e.message },
-                    });
+                    await this.prisma.riskBlockLog.create({ data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: 'SL_ORDER_FAILED', detail: e.message } });
                 }
                 catch { }
                 await this.haltEngine(userId, 'SL_ORDER_FAILED');
             }
         }
     }
-    calcRSI(closes, period) {
-        if (closes.length < period + 1)
-            return 50;
-        let gains = 0, losses = 0;
-        for (let i = closes.length - period; i < closes.length; i++) {
-            const diff = closes[i] - closes[i - 1];
-            if (diff > 0)
-                gains += diff;
-            else
-                losses -= diff;
-        }
-        const rs = gains / (losses || 0.0001);
-        return 100 - 100 / (1 + rs);
-    }
-    calcEMA(closes, period) {
-        if (closes.length < period)
-            return closes[closes.length - 1];
-        const k = 2 / (period + 1);
-        let ema = closes.slice(0, period).reduce((a, b) => a + b) / period;
-        for (let i = period; i < closes.length; i++) {
-            ema = closes[i] * k + ema * (1 - k);
-        }
-        return ema;
-    }
 };
 exports.StrategyEngineService = StrategyEngineService;
 exports.StrategyEngineService = StrategyEngineService = StrategyEngineService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        binance_service_1.BinanceService])
+        binance_service_1.BinanceService,
+        indicator_service_1.IndicatorService,
+        strategy_rule_evaluator_1.StrategyRuleEvaluator])
 ], StrategyEngineService);
 //# sourceMappingURL=strategy-engine.service.js.map

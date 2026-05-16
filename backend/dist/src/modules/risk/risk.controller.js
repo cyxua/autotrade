@@ -18,6 +18,7 @@ const risk_service_1 = require("./risk.service");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 let RiskController = class RiskController {
+    svc;
     constructor(svc) {
         this.svc = svc;
     }

@@ -48,9 +48,10 @@ const common_1 = require("@nestjs/common");
 const bcrypt = __importStar(require("bcrypt"));
 const prisma_service_1 = require("../../prisma/prisma.service");
 let UserService = UserService_1 = class UserService {
+    prisma;
+    logger = new common_1.Logger(UserService_1.name);
     constructor(prisma) {
         this.prisma = prisma;
-        this.logger = new common_1.Logger(UserService_1.name);
     }
     async onModuleInit() {
         const count = await this.prisma.user.count();

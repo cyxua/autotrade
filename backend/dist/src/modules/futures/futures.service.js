@@ -54,18 +54,21 @@ const crypto = __importStar(require("crypto"));
 const prisma_service_1 = require("../../prisma/prisma.service");
 const crypto_util_1 = require("../../common/utils/crypto.util");
 let FuturesService = FuturesService_1 = class FuturesService {
+    config;
+    prisma;
+    cache = new Map();
     cached(key, ttl, fn) {
         const hit = this.cache.get(key);
         if (hit && Date.now() - hit.ts < ttl)
             return Promise.resolve(hit.data);
         return fn().then(data => { this.cache.set(key, { data, ts: Date.now() }); return data; });
     }
+    logger = new common_1.Logger(FuturesService_1.name);
+    BASE = 'https://fapi.binance.com';
+    client;
     constructor(config, prisma) {
         this.config = config;
         this.prisma = prisma;
-        this.cache = new Map();
-        this.logger = new common_1.Logger(FuturesService_1.name);
-        this.BASE = 'https://fapi.binance.com';
         this.client = axios_1.default.create({ baseURL: this.BASE, timeout: 10_000 });
     }
     async getSymbols() {

@@ -10,9 +10,7 @@ exports.LoggingInterceptor = void 0;
 const common_1 = require("@nestjs/common");
 const operators_1 = require("rxjs/operators");
 let LoggingInterceptor = class LoggingInterceptor {
-    constructor() {
-        this.logger = new common_1.Logger('HTTP');
-    }
+    logger = new common_1.Logger('HTTP');
     intercept(ctx, next) {
         const { method, url } = ctx.switchToHttp().getRequest();
         const start = Date.now();

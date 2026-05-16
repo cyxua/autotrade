@@ -16,6 +16,9 @@ const prisma_service_1 = require("../../prisma/prisma.service");
 const binance_service_1 = require("./binance.service");
 const crypto_util_1 = require("../../common/utils/crypto.util");
 let ApiSettingsService = class ApiSettingsService {
+    prisma;
+    binance;
+    config;
     constructor(prisma, binance, config) {
         this.prisma = prisma;
         this.binance = binance;

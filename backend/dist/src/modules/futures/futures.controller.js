@@ -18,6 +18,7 @@ const futures_service_1 = require("./futures.service");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 let FuturesController = class FuturesController {
+    svc;
     constructor(svc) {
         this.svc = svc;
     }
