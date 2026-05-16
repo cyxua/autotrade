@@ -3,21 +3,29 @@ import { StrategyRule, makeDefaultRule } from '@/lib/strategyRules';
 import { RuleCard } from './RuleCard';
 
 interface Props {
-  title: string;
-  rules: StrategyRule[];
+  title:      string;
+  rules:      StrategyRule[];
   showWeight: boolean;
-  onChange: (rules: StrategyRule[]) => void;
+  onChange:   (rules: StrategyRule[]) => void;
+  warnUnused?: boolean;  // true면 "현재 미사용" 배지 표시
 }
 
-export function RuleBuilder({ title, rules, showWeight, onChange }: Props) {
+export function RuleBuilder({ title, rules, showWeight, onChange, warnUnused }: Props) {
   const add    = () => onChange([...rules, makeDefaultRule('RSI_RANGE')]);
   const update = (i: number, r: StrategyRule) => onChange(rules.map((x, idx) => idx === i ? r : x));
   const remove = (i: number) => onChange(rules.filter((_, idx) => idx !== i));
 
   return (
     <div style={{ marginBottom: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <span style={{ fontSize: '13px', color: '#9CA3AF', fontWeight: '600' }}>{title}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '13px', color: '#9CA3AF', fontWeight: 600 }}>{title}</span>
+          {warnUnused && (
+            <span style={{ fontSize: '10px', background: '#374151', color: '#F59E0B', borderRadius: '4px', padding: '2px 6px', border: '1px solid #F59E0B' }}>
+              ⚠ 현재 미사용
+            </span>
+          )}
+        </div>
         <button onClick={add}
           style={{ background: '#1F2937', border: '1px solid #374151', color: '#EAB308', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer', fontSize: '12px' }}>
           + 조건 추가

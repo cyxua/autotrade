@@ -1,6 +1,6 @@
 export declare class CreateStrategyDto {
     name: string;
-    type: string;
+    type?: string;
     symbol: string;
     timeframe: string;
     positionSizeUsdt: number;
@@ -16,4 +16,6 @@ export declare class CreateStrategyDto {
     maxDailyTrades: number;
     stopOnConsecLoss: number;
     params?: Record<string, any>;
+}
+export declare class UpdateStrategyDto extends CreateStrategyDto {
 }

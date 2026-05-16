@@ -69,9 +69,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             const state = await this.prisma.engineState.findFirst({ where: { userId } });
             if (!state || state.status !== 'RUNNING')
                 return;
-            const strategies = await this.prisma.strategy.findMany({
-                where: { userId, enabled: true },
-            });
+            const strategies = await this.prisma.strategy.findMany({ where: { userId, enabled: true } });
             for (const strategy of strategies) {
                 await this.processStrategy(userId, strategy);
             }
@@ -86,247 +84,169 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             return { ok: false, reason: 'ENGINE_NOT_RUNNING' };
         if ((strategy.leverage ?? 1) > 20)
             return { ok: false, reason: 'LEVERAGE_EXCEEDED' };
-        let positions;
-        try {
-            positions = await this.binance.getPositionsStrict();
-        }
-        catch {
-            return { ok: false, reason: 'POSITION_FETCH_FAILED' };
-        }
-        if (positions.some((p) => p.symbol === strategy.symbol && parseFloat(p.positionAmt) !== 0))
-            return { ok: false, reason: 'POSITION_EXISTS' };
-        const openCount = positions.filter((p) => parseFloat(p.positionAmt) !== 0).length;
-        if (openCount >= (strategy.maxPositions ?? 1))
-            return { ok: false, reason: 'MAX_POSITIONS_EXCEEDED' };
-        const dailyPnl = state.dailyPnl ?? 0;
-        const dailyTrades = state.dailyTrades ?? 0;
-        const consecLoss = state.consecLossCount ?? 0;
-        if (strategy.maxDailyLoss > 0 && dailyPnl < -strategy.maxDailyLoss)
-            return { ok: false, reason: 'DAILY_LOSS_EXCEEDED' };
-        if (strategy.maxDailyTrades > 0 && dailyTrades >= strategy.maxDailyTrades)
+        const openPositions = await this.prisma.position.count({
+            where: { userId, symbol: strategy.symbol, status: 'OPEN' },
+        });
+        if (openPositions >= (strategy.maxPositions ?? 1))
+            return { ok: false, reason: 'MAX_POSITIONS_REACHED' };
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayOrders = await this.prisma.order.count({
+            where: { userId, strategyId: strategy.id, createdAt: { gte: today } },
+        });
+        if (todayOrders >= (strategy.maxDailyTrades ?? 10))
             return { ok: false, reason: 'DAILY_TRADES_EXCEEDED' };
-        if (strategy.stopOnConsecLoss > 0 && consecLoss >= strategy.stopOnConsecLoss)
-            return { ok: false, reason: 'CONSEC_LOSS_EXCEEDED' };
-        try {
-            const balances = await this.binance.getBalance();
-            const usdt = Array.isArray(balances) ? balances.find((b) => b.asset === 'USDT') : balances;
-            const available = parseFloat(usdt?.availableBalance ?? usdt?.balance ?? '0');
-            if (available < (strategy.positionSizeUsdt ?? 100))
-                return { ok: false, reason: 'INSUFFICIENT_BALANCE' };
-        }
-        catch {
-            return { ok: false, reason: 'BALANCE_CHECK_FAILED' };
-        }
         return { ok: true };
     }
     async processStrategy(userId, strategy) {
         try {
             const params = (strategy.params ?? {});
-            const validationError = this.validateStrategyParams(strategy.symbol, params);
-            if (validationError) {
-                this.logger.warn(`[${strategy.symbol}] 전략 설정 오류 — 진입 차단: ${validationError}`);
-                return;
+            if ((params.exitRules ?? []).length > 0) {
+                this.logger.warn(`[${strategy.symbol}] exitRules가 설정되어 있으나 현재 엔진에서 평가되지 않습니다.`);
             }
-            const tf = strategy.timeframe.replace(/^([a-zA-Z]+)(\d+)$/, '$2$1');
-            const klines = await this.binance.getKlines(strategy.symbol, tf, 200);
-            if (!klines || klines.length < 30) {
-                this.logger.warn(`[${strategy.symbol}] klines 부족 (${klines?.length ?? 0})`);
+            const tfMap = { m1: '1m', m5: '5m', m15: '15m', h1: '1h', h4: '4h' };
+            const interval = tfMap[strategy.timeframe] ?? '15m';
+            let klines = await this.binance.getKlines(strategy.symbol, interval, 250);
+            const useClosedOnly = params.useClosedCandleOnly !== false;
+            if (useClosedOnly) {
+                const now = Date.now();
+                klines = klines.filter(k => k.closeTime < now);
+            }
+            if (klines.length < 50) {
+                this.logger.warn(`[${strategy.symbol}] 캔들 수 부족 (${klines.length}), 스킵`);
                 return;
             }
             const evalMode = params.evalMode ?? 'ALL';
             const minScore = params.minScore ?? 60;
-            if ((params.blockRules ?? []).length > 0) {
-                const blockResult = this.evaluator.evaluate(params.blockRules, klines, 'ANY');
+            const blockRules = params.blockRules ?? [];
+            if (blockRules.length > 0) {
+                const blockResult = this.evaluator.evaluate(blockRules, klines, 'ANY');
                 if (blockResult.signal) {
-                    this.logger.log(`[${strategy.symbol}] blockRule 발동 — 진입 차단 (score:${blockResult.score})`);
+                    this.logger.log(`[${strategy.symbol}] 차단 조건 발동 — 스킵`);
                     return;
                 }
             }
-            const longRules = params.longEntryRules ?? [];
-            if (longRules.length > 0 && strategy.allowLong) {
-                const result = this.evaluator.evaluate(longRules, klines, evalMode, minScore);
-                this.logger.log(`[${strategy.symbol}] LONG 평가 signal:${result.signal} score:${result.score} ` +
-                    `(${result.details.map(d => `${d.type}:${d.passed ? '✓' : '✗'}`).join(' ')})`);
-                if (result.signal) {
-                    await this.placeOrder(userId, strategy, 'BUY', 'LONG_ENTRY');
-                    return;
+            const directions = [];
+            if (strategy.allowLong) {
+                const longRules = params.longEntryRules ?? [];
+                for (const r of longRules) {
+                    const err = (0, strategy_rule_evaluator_1.validateRule)(r);
+                    if (err) {
+                        this.logger.warn(`[${strategy.symbol}] 롱 rule 오류: ${err}`);
+                        return;
+                    }
                 }
+                const longResult = this.evaluator.evaluate(longRules, klines, evalMode, minScore);
+                if (longResult.signal)
+                    directions.push('LONG');
             }
-            const shortRules = params.shortEntryRules ?? [];
-            if (shortRules.length > 0 && strategy.allowShort) {
-                const result = this.evaluator.evaluate(shortRules, klines, evalMode, minScore);
-                this.logger.log(`[${strategy.symbol}] SHORT 평가 signal:${result.signal} score:${result.score} ` +
-                    `(${result.details.map(d => `${d.type}:${d.passed ? '✓' : '✗'}`).join(' ')})`);
-                if (result.signal) {
-                    await this.placeOrder(userId, strategy, 'SELL', 'SHORT_ENTRY');
+            if (strategy.allowShort) {
+                const shortRules = params.shortEntryRules ?? [];
+                for (const r of shortRules) {
+                    const err = (0, strategy_rule_evaluator_1.validateRule)(r);
+                    if (err) {
+                        this.logger.warn(`[${strategy.symbol}] 숏 rule 오류: ${err}`);
+                        return;
+                    }
                 }
+                const shortResult = this.evaluator.evaluate(shortRules, klines, evalMode, minScore);
+                if (shortResult.signal)
+                    directions.push('SHORT');
+            }
+            for (const direction of directions) {
+                const guard = await this.riskGuard(userId, strategy);
+                if (!guard.ok) {
+                    this.logger.log(`[${strategy.symbol}] 리스크 차단: ${guard.reason}`);
+                    continue;
+                }
+                await this.enterPosition(userId, strategy, direction, klines);
             }
         }
         catch (e) {
-            this.logger.error(`[${strategy.symbol}] 전략 처리 오류`, e);
+            this.logger.error(`[${strategy.symbol}] processStrategy 오류: ${e.message}`);
         }
     }
-    validateStrategyParams(symbol, params) {
-        const allRules = [
-            ...(params.longEntryRules ?? []),
-            ...(params.shortEntryRules ?? []),
-            ...(params.exitRules ?? []),
-            ...(params.blockRules ?? []),
-        ];
-        for (const rule of allRules) {
-            const err = (0, strategy_rule_evaluator_1.validateRule)(rule);
-            if (err)
-                return err;
-        }
-        if (params.evalMode === 'SCORE' && (params.minScore === undefined || params.minScore < 0 || params.minScore > 100))
-            return 'SCORE 모드에서 minScore는 0~100이어야 합니다';
-        return null;
-    }
-    async placeOrder(userId, strategy, side, entryReason) {
+    async enterPosition(userId, strategy, direction, klines) {
+        const symbol = strategy.symbol;
         try {
-            const guard = await this.riskGuard(userId, strategy);
-            if (!guard.ok) {
-                this.logger.log(`[${strategy.symbol}] 주문 차단: ${guard.reason}`);
-                try {
-                    await this.prisma.riskBlockLog.create({
-                        data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: guard.reason ?? 'UNKNOWN', detail: { entryReason } },
-                    });
-                }
-                catch { }
+            const filters = await this.binance.getSymbolFilters(symbol);
+            const price = await this.binance.getTickerPrice(symbol);
+            await this.binance.setLeverage(symbol, strategy.leverage);
+            await this.binance.setMarginType(symbol, strategy.marginType);
+            const notional = strategy.positionSizeUsdt * strategy.leverage;
+            const rawQty = notional / price;
+            const qty = formatQty(rawQty, filters.stepSize);
+            if (parseFloat(qty) < filters.minQty) {
+                this.logger.warn(`[${symbol}] 최소 수량 미달: ${qty} < ${filters.minQty}`);
                 return;
             }
-            let filters;
-            try {
-                filters = await this.binance.getSymbolFilters(strategy.symbol);
-            }
-            catch (e) {
-                this.logger.error(`[${strategy.symbol}] 심볼 필터 조회 실패 — 주문 차단: ${e.message}`);
-                return;
-            }
-            const price = await this.binance.getTickerPrice(strategy.symbol);
-            const notional = (strategy.positionSizeUsdt ?? 100) * (strategy.leverage ?? 1);
-            const qtyStr = formatQty(notional / price, filters.stepSize);
-            const qtyNum = parseFloat(qtyStr);
-            if (qtyNum <= 0 || qtyNum < filters.minQty) {
-                this.logger.error(`[${strategy.symbol}] 수량 검증 실패: qty=${qtyNum} minQty=${filters.minQty}`);
-                return;
-            }
-            if (filters.minNotional > 0 && qtyNum * price < filters.minNotional) {
-                this.logger.error(`[${strategy.symbol}] MIN_NOTIONAL 미달: ${(qtyNum * price).toFixed(2)} < ${filters.minNotional}`);
-                return;
-            }
-            this.logger.log(`[${strategy.symbol}] ${side} 주문 시도 qty:${qtyStr} price:${price} reason:${entryReason}`);
-            await this.binance.setLeverage(strategy.symbol, strategy.leverage ?? 1);
-            let orderResult = await this.binance.placeOrder({
-                symbol: strategy.symbol,
-                side,
-                positionSide: 'BOTH',
-                type: 'MARKET',
-                quantity: qtyStr,
-                newOrderRespType: 'RESULT',
+            const side = direction === 'LONG' ? 'BUY' : 'SELL';
+            const orderRes = await this.binance.placeOrder({
+                symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qty,
             });
-            const orderId = orderResult?.orderId;
-            if (!orderId) {
-                this.logger.error(`[${strategy.symbol}] orderId 없음`);
-                return;
-            }
-            if (!orderResult?.avgPrice || parseFloat(orderResult.avgPrice) === 0) {
+            const fillPrice = parseFloat(orderRes.avgPrice ?? orderRes.price ?? String(price));
+            const filledQty = parseFloat(orderRes.executedQty ?? qty);
+            const orderStatus = orderRes.status ?? 'FILLED';
+            const dbOrder = await this.prisma.order.create({
+                data: {
+                    userId,
+                    strategyId: strategy.id ?? null,
+                    binanceOrderId: String(orderRes.orderId ?? ''),
+                    symbol,
+                    side: side,
+                    positionSide: 'BOTH',
+                    orderType: 'MARKET',
+                    status: orderStatus,
+                    quantity: parseFloat(qty),
+                    avgFillPrice: fillPrice,
+                    filledQty: ['FILLED', 'PARTIALLY_FILLED'].includes(orderStatus) ? filledQty : 0,
+                    filledAt: ['FILLED', 'PARTIALLY_FILLED'].includes(orderStatus) ? new Date() : null,
+                    leverage: strategy.leverage,
+                    marginType: strategy.marginType,
+                    entryReason: direction,
+                },
+            });
+            this.logger.log(`[${symbol}] ${direction} 진입 — qty: ${qty}, price: ${fillPrice}`);
+            if (strategy.takeProfitPct > 0) {
+                const dir = direction === 'LONG' ? 1 : -1;
+                const tp = formatPrice(fillPrice * (1 + dir * strategy.takeProfitPct / 100), filters.tickSize);
                 try {
-                    orderResult = await this.binance.getOrderDetail(strategy.symbol, orderId);
+                    await this.binance.placeOrder({
+                        symbol, side: side === 'BUY' ? 'SELL' : 'BUY',
+                        positionSide: 'BOTH', type: 'TAKE_PROFIT_MARKET',
+                        stopPrice: tp, closePosition: 'true',
+                    });
+                    this.logger.log(`[${symbol}] TP: ${tp}`);
                 }
                 catch (e) {
-                    this.logger.warn(`재조회 실패: ${e.message}`);
+                    this.logger.error(`[${symbol}] TP 실패: ${e.message}`);
                 }
             }
-            const orderStatus = orderResult?.status;
-            const executedQty = parseFloat(orderResult?.executedQty ?? '0');
-            const avgFillPrice = parseFloat(orderResult?.avgPrice ?? '0');
-            const isFilled = orderStatus === 'FILLED' || orderStatus === 'PARTIALLY_FILLED';
-            this.logger.log(`[${strategy.symbol}] ${side} 완료 orderId:${orderId} status:${orderStatus} avgPrice:${avgFillPrice}`);
-            try {
-                await this.prisma.order.create({
-                    data: {
-                        userId, strategyId: strategy.id,
-                        binanceOrderId: String(orderId),
-                        symbol: strategy.symbol,
-                        side: side,
-                        positionSide: 'BOTH',
-                        orderType: 'MARKET',
-                        status: (isFilled ? orderStatus : (orderStatus ?? 'ERROR')),
-                        quantity: executedQty > 0 ? executedQty : qtyNum,
-                        avgFillPrice: avgFillPrice > 0 ? avgFillPrice : price,
-                        leverage: strategy.leverage ?? 1,
-                        marginType: (strategy.marginType ?? 'ISOLATED'),
-                        entryReason,
-                    },
-                });
+            if (strategy.stopLossPct > 0) {
+                const dir = direction === 'LONG' ? 1 : -1;
+                const sl = formatPrice(fillPrice * (1 - dir * strategy.stopLossPct / 100), filters.tickSize);
+                try {
+                    await this.binance.placeOrder({
+                        symbol, side: side === 'BUY' ? 'SELL' : 'BUY',
+                        positionSide: 'BOTH', type: 'STOP_MARKET',
+                        stopPrice: sl, closePosition: 'true',
+                    });
+                    this.logger.log(`[${symbol}] SL: ${sl}`);
+                }
+                catch (e) {
+                    this.logger.error(`[${symbol}] SL 실패 — 엔진 중지`, e.message);
+                    try {
+                        await this.prisma.riskBlockLog.create({
+                            data: { userId, strategyId: strategy.id ?? null, symbol, reason: 'SL_ORDER_FAILED', detail: e.message },
+                        });
+                    }
+                    catch { }
+                    await this.haltEngine(userId, 'SL_ORDER_FAILED');
+                }
             }
-            catch (dbErr) {
-                this.logger.error('DB 저장 실패', dbErr.message);
-            }
-            if (!isFilled) {
-                this.logger.warn(`[${strategy.symbol}] 미체결(${orderStatus}) — TP/SL 생략`);
-                return;
-            }
-            try {
-                await this.prisma.engineState.updateMany({ where: { userId }, data: { dailyTrades: { increment: 1 } } });
-            }
-            catch { }
-            await this.placeTpSl(userId, strategy, side, qtyStr, avgFillPrice, filters.tickSize);
         }
         catch (e) {
-            this.logger.error(`[${strategy.symbol}] 주문 실패`, e);
-        }
-    }
-    async placeTpSl(userId, strategy, side, qtyStr, avgFillPrice, tickSize) {
-        let fillPrice = avgFillPrice > 0 ? avgFillPrice : 0;
-        if (fillPrice <= 0) {
-            try {
-                const positions = await this.binance.getPositionsStrict();
-                const pos = positions.find((p) => p.symbol === strategy.symbol && parseFloat(p.positionAmt) !== 0);
-                if (pos) {
-                    fillPrice = parseFloat(pos.entryPrice);
-                    this.logger.warn(`[${strategy.symbol}] entryPrice 사용: ${fillPrice}`);
-                }
-            }
-            catch {
-                await this.haltEngine(userId, 'ENTRY_PRICE_CHECK_FAILED');
-                return;
-            }
-        }
-        if (fillPrice <= 0) {
-            await this.haltEngine(userId, 'ENTRY_PRICE_CHECK_FAILED');
-            return;
-        }
-        const dir = side === 'BUY' ? 1 : -1;
-        if ((strategy.takeProfitPct ?? 0) > 0) {
-            try {
-                const tp = formatPrice(fillPrice * (1 + dir * strategy.takeProfitPct / 100), tickSize);
-                await this.binance.placeOrder({ symbol: strategy.symbol, side: side === 'BUY' ? 'SELL' : 'BUY', positionSide: 'BOTH', type: 'TAKE_PROFIT_MARKET', stopPrice: tp, closePosition: 'true' });
-                this.logger.log(`[${strategy.symbol}] TP: ${tp}`);
-            }
-            catch (e) {
-                this.logger.error(`[${strategy.symbol}] TP 실패`, e.message);
-                try {
-                    await this.prisma.riskBlockLog.create({ data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: 'TP_ORDER_FAILED', detail: e.message } });
-                }
-                catch { }
-            }
-        }
-        if ((strategy.stopLossPct ?? 0) > 0) {
-            try {
-                const sl = formatPrice(fillPrice * (1 - dir * strategy.stopLossPct / 100), tickSize);
-                await this.binance.placeOrder({ symbol: strategy.symbol, side: side === 'BUY' ? 'SELL' : 'BUY', positionSide: 'BOTH', type: 'STOP_MARKET', stopPrice: sl, closePosition: 'true' });
-                this.logger.log(`[${strategy.symbol}] SL: ${sl}`);
-            }
-            catch (e) {
-                this.logger.error(`[${strategy.symbol}] SL 실패 — 엔진 중지`, e.message);
-                try {
-                    await this.prisma.riskBlockLog.create({ data: { userId, strategyId: strategy.id ?? null, symbol: strategy.symbol, reason: 'SL_ORDER_FAILED', detail: e.message } });
-                }
-                catch { }
-                await this.haltEngine(userId, 'SL_ORDER_FAILED');
-            }
+            this.logger.error(`[${symbol}] enterPosition 오류: ${e.message}`);
         }
     }
 };

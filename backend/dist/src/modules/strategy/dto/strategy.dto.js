@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateStrategyDto = void 0;
+exports.UpdateStrategyDto = exports.CreateStrategyDto = void 0;
 const class_validator_1 = require("class-validator");
 class CreateStrategyDto {
     name;
@@ -37,6 +37,7 @@ __decorate([
 ], CreateStrategyDto.prototype, "name", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], CreateStrategyDto.prototype, "type", void 0);
 __decorate([
@@ -110,4 +111,7 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Object)
 ], CreateStrategyDto.prototype, "params", void 0);
+class UpdateStrategyDto extends CreateStrategyDto {
+}
+exports.UpdateStrategyDto = UpdateStrategyDto;
 //# sourceMappingURL=strategy.dto.js.map

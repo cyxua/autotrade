@@ -34,31 +34,44 @@ export interface RuleDetail {
 
 export interface EvalResult {
   signal:  boolean;
-  score:   number;   // 0~100
+  score:   number;
   details: RuleDetail[];
 }
 
-// ── 조건별 파라미터 스키마 (validation용) ────────────────────────────
-export const RULE_PARAMS_SCHEMA: Record<RuleType, Record<string, { type: string; default: any; min?: number; max?: number; options?: string[] }>> = {
-  EMA_CROSS:          { fastPeriod: { type: 'number', default: 9,    min: 1,   max: 500 }, slowPeriod: { type: 'number', default: 21,  min: 1,   max: 500 }, direction: { type: 'select', default: 'GOLDEN', options: ['GOLDEN', 'DEAD'] } },
-  SMA_CROSS:          { fastPeriod: { type: 'number', default: 10,   min: 1,   max: 500 }, slowPeriod: { type: 'number', default: 50,  min: 1,   max: 500 }, direction: { type: 'select', default: 'GOLDEN', options: ['GOLDEN', 'DEAD'] } },
-  RSI_RANGE:          { period:    { type: 'number', default: 14,   min: 2,   max: 200 }, minValue:  { type: 'number', default: 0,   min: 0,   max: 100 }, maxValue: { type: 'number', default: 30,  min: 0, max: 100 } },
-  BOLLINGER_BREAKOUT: { period:    { type: 'number', default: 20,   min: 5,   max: 500 }, stdDev:    { type: 'number', default: 2.0, min: 0.5, max: 5.0 }, direction: { type: 'select', default: 'UPPER', options: ['UPPER', 'LOWER'] } },
-  HIGH_LOW_BREAKOUT:  { lookback:  { type: 'number', default: 20,   min: 5,   max: 500 }, direction: { type: 'select', default: 'HIGH', options: ['HIGH', 'LOW'] } },
-  VOLUME_SPIKE:       { period:    { type: 'number', default: 20,   min: 5,   max: 500 }, multiplier:{ type: 'number', default: 2.0, min: 1.0, max: 20.0 } },
-  TRADE_COUNT_SURGE:  { period:    { type: 'number', default: 20,   min: 5,   max: 500 }, multiplier:{ type: 'number', default: 1.5, min: 1.0, max: 20.0 } },
-  ATR_RANGE:          { period:    { type: 'number', default: 14,   min: 2,   max: 200 }, minValue:  { type: 'number', default: 0,   min: 0,   max: 99999}, maxValue: { type: 'number', default: 9999, min: 0, max: 99999 } },
-  PRICE_ABOVE_MA:     { period:    { type: 'number', default: 200,  min: 1,   max: 500 }, maType:    { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
-  PRICE_BELOW_MA:     { period:    { type: 'number', default: 200,  min: 1,   max: 500 }, maType:    { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
+export const RULE_PARAMS_SCHEMA: Record<RuleType, Record<string, {
+  type: string; default: any; min?: number; max?: number; options?: string[];
+}>> = {
+  EMA_CROSS:          { fastPeriod: { type: 'number', default: 9,    min: 1, max: 500 }, slowPeriod: { type: 'number', default: 21,   min: 1,   max: 500 }, direction: { type: 'select', default: 'GOLDEN', options: ['GOLDEN', 'DEAD'] } },
+  SMA_CROSS:          { fastPeriod: { type: 'number', default: 10,   min: 1, max: 500 }, slowPeriod: { type: 'number', default: 50,   min: 1,   max: 500 }, direction: { type: 'select', default: 'GOLDEN', options: ['GOLDEN', 'DEAD'] } },
+  RSI_RANGE:          { period:     { type: 'number', default: 14,   min: 2, max: 200 }, minValue:   { type: 'number', default: 0,    min: 0,   max: 100  }, maxValue:    { type: 'number', default: 30,   min: 0, max: 100    } },
+  BOLLINGER_BREAKOUT: { period:     { type: 'number', default: 20,   min: 5, max: 500 }, stdDev:     { type: 'number', default: 2.0,  min: 0.5, max: 5.0  }, direction:   { type: 'select', default: 'UPPER', options: ['UPPER', 'LOWER'] } },
+  HIGH_LOW_BREAKOUT:  { lookback:   { type: 'number', default: 20,   min: 5, max: 500 }, direction:  { type: 'select', default: 'HIGH', options: ['HIGH', 'LOW'] } },
+  VOLUME_SPIKE:       { period:     { type: 'number', default: 20,   min: 5, max: 500 }, multiplier: { type: 'number', default: 2.0,  min: 1.0, max: 20.0 } },
+  TRADE_COUNT_SURGE:  { period:     { type: 'number', default: 20,   min: 5, max: 500 }, multiplier: { type: 'number', default: 1.5,  min: 1.0, max: 20.0 } },
+  ATR_RANGE:          { period:     { type: 'number', default: 14,   min: 2, max: 200 }, minValue:   { type: 'number', default: 0,    min: 0,   max: 99999}, maxValue:    { type: 'number', default: 9999, min: 0, max: 99999  } },
+  PRICE_ABOVE_MA:     { period:     { type: 'number', default: 200,  min: 1, max: 500 }, maType:     { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
+  PRICE_BELOW_MA:     { period:     { type: 'number', default: 200,  min: 1, max: 500 }, maType:     { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
 };
 
-// ── Rule params validation ─────────────────────────────────────────────
+// ── validateRule: select 필드도 검증 ─────────────────────────────────
 export function validateRule(rule: StrategyRule): string | null {
   const schema = RULE_PARAMS_SCHEMA[rule.type];
   if (!schema) return `알 수 없는 rule type: ${rule.type}`;
+
   for (const [key, meta] of Object.entries(schema)) {
-    if (meta.type === 'select') continue; // select는 기본값으로 통과
     const val = rule.params[key];
+
+    if (meta.type === 'select') {
+      // 값 없으면 default 적용 (mutation 대신 경고 후 통과)
+      const effective = val ?? meta.default;
+      if (!meta.options?.includes(String(effective))) {
+        return `${rule.type}.${key}는 [${meta.options?.join(', ')}] 중 하나여야 합니다 (현재: ${effective})`;
+      }
+      // default 적용
+      if (val === undefined || val === null) rule.params[key] = meta.default;
+      continue;
+    }
+
     if (val === undefined || val === null) return `${rule.type}.${key} 값이 필요합니다`;
     if (meta.min !== undefined && val < meta.min) return `${rule.type}.${key}는 ${meta.min} 이상이어야 합니다`;
     if (meta.max !== undefined && val > meta.max) return `${rule.type}.${key}는 ${meta.max} 이하여야 합니다`;
@@ -66,7 +79,6 @@ export function validateRule(rule: StrategyRule): string | null {
   return null;
 }
 
-// ── Rule Evaluator ─────────────────────────────────────────────────────
 @Injectable()
 export class StrategyRuleEvaluator {
   private readonly logger = new Logger(StrategyRuleEvaluator.name);
@@ -102,7 +114,7 @@ export class StrategyRuleEvaluator {
     switch (evalMode) {
       case 'ALL':   signal = details.every(d => d.passed); break;
       case 'ANY':   signal = details.some(d => d.passed);  break;
-      case 'SCORE': signal = score >= minScore;              break;
+      case 'SCORE': signal = score >= minScore;             break;
       default:      signal = false;
     }
 
@@ -110,12 +122,11 @@ export class StrategyRuleEvaluator {
   }
 
   private evaluateRule(rule: StrategyRule, klines: Kline[]): { passed: boolean; value: number } {
-    const p       = rule.params;
-    const closes  = this.indicator.closes(klines);
-    const volumes = this.indicator.volumes(klines);
-    const highs   = this.indicator.highs(klines);
-    const lows    = this.indicator.lows(klines);
-    const last    = closes.at(-1) ?? 0;
+    const p      = rule.params;
+    const closes = this.indicator.closes(klines);
+    const highs  = this.indicator.highs(klines);
+    const lows   = this.indicator.lows(klines);
+    const last   = closes[closes.length - 1] ?? 0;
 
     switch (rule.type) {
 
@@ -159,24 +170,25 @@ export class StrategyRuleEvaluator {
         const extreme  = p.direction === 'HIGH'
           ? Math.max(...slice.map(k => k.high))
           : Math.min(...slice.map(k => k.low));
-        const passed   = p.direction === 'HIGH' ? last > extreme : last < extreme;
-        return { value: parseFloat((last - extreme).toFixed(6)), passed };
+        return { value: parseFloat((last - extreme).toFixed(6)), passed: p.direction === 'HIGH' ? last > extreme : last < extreme };
       }
 
       case 'VOLUME_SPIKE': {
+        const volumes = this.indicator.volumes(klines);
         const recent  = volumes.slice(0, -1);
         const avgVol  = this.indicator.calcSMA(recent, Math.min(p.period, recent.length));
-        const curVol  = volumes.at(-1) ?? 0;
+        const curVol  = volumes[volumes.length - 1] ?? 0;
         const ratio   = avgVol > 0 ? curVol / avgVol : 0;
         return { value: parseFloat(ratio.toFixed(4)), passed: ratio >= p.multiplier };
       }
 
       case 'TRADE_COUNT_SURGE': {
-        // volume을 거래량 대리 지표로 사용 (실제 trade count API 미지원)
-        const recent  = volumes.slice(0, -1);
-        const avgVol  = this.indicator.calcSMA(recent, Math.min(p.period, recent.length));
-        const curVol  = volumes.at(-1) ?? 0;
-        const ratio   = avgVol > 0 ? curVol / avgVol : 0;
+        // k[8] tradeCount 기반 평가
+        const counts = this.indicator.tradeCounts(klines);
+        const recent = counts.slice(0, -1);
+        const avg    = this.indicator.calcSMA(recent, Math.min(p.period, recent.length));
+        const cur    = counts[counts.length - 1] ?? 0;
+        const ratio  = avg > 0 ? cur / avg : 0;
         return { value: parseFloat(ratio.toFixed(4)), passed: ratio >= p.multiplier };
       }
 

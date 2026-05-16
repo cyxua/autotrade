@@ -16,7 +16,5 @@ export declare class StrategyEngineService {
     private scanStrategies;
     private riskGuard;
     private processStrategy;
-    private validateStrategyParams;
-    private placeOrder;
-    private placeTpSl;
+    private enterPosition;
 }

@@ -14,7 +14,7 @@ export default function NewStrategyPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [form, setForm] = useState({
-    name: '', symbol: 'BTCUSDT', timeframe: 'm15',
+    name: '', type: 'RULE_BASED', symbol: 'BTCUSDT', timeframe: 'm15',
     positionSizeUsdt: 50, leverage: 5, marginType: 'ISOLATED',
     allowLong: true, allowShort: true,
     takeProfitPct: 2.0, stopLossPct: 1.0, trailingStopPct: 0,
@@ -136,7 +136,7 @@ export default function NewStrategyPage() {
         {/* 청산/차단 */}
         <div style={{ ...sec, border: '1px solid #1E3A5F' }}>
           <h3 style={{ color: '#60A5FA', marginBottom: '16px', fontSize: '15px' }}>청산 / 차단 조건</h3>
-          <RuleBuilder title="청산 조건" rules={form.params.exitRules} showWeight={false} onChange={r => setParam('exitRules', r)} />
+          <RuleBuilder title="청산 조건" rules={form.params.exitRules} warnUnused showWeight={false} onChange={r => setParam('exitRules', r)} />
           <RuleBuilder title="차단 조건" rules={form.params.blockRules} showWeight={false} onChange={r => setParam('blockRules', r)} />
         </div>
 

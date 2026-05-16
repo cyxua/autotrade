@@ -1,8 +1,8 @@
-import { IsString, IsEnum, IsBoolean, IsNumber, IsInt, IsOptional, IsObject, Min, Max } from 'class-validator';
+import { IsString, IsBoolean, IsNumber, IsInt, IsOptional, IsObject, Min, Max } from 'class-validator';
 
 export class CreateStrategyDto {
   @IsString() name: string;
-  @IsString() type: string;
+  @IsString() @IsOptional() type?: string;   // 기본값 RULE_BASED (service에서 처리)
   @IsString() symbol: string;
   @IsString() timeframe: string;
   @IsNumber() @Min(1) positionSizeUsdt: number;
@@ -19,3 +19,5 @@ export class CreateStrategyDto {
   @IsInt() @Min(1) stopOnConsecLoss: number;
   @IsObject() @IsOptional() params?: Record<string, any>;
 }
+
+export class UpdateStrategyDto extends CreateStrategyDto {}

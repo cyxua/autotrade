@@ -13,7 +13,7 @@ let IndicatorService = class IndicatorService {
         if (closes.length === 0)
             return 0;
         if (closes.length < period)
-            return closes.at(-1) ?? 0;
+            return closes[closes.length - 1] ?? 0;
         const k = 2 / (period + 1);
         let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
         for (let i = period; i < closes.length; i++) {
@@ -43,7 +43,7 @@ let IndicatorService = class IndicatorService {
     }
     calcBB(closes, period, stdDev) {
         if (closes.length < period) {
-            const last = closes.at(-1) ?? 0;
+            const last = closes[closes.length - 1] ?? 0;
             return { upper: last, middle: last, lower: last };
         }
         const slice = closes.slice(-period);
@@ -65,6 +65,7 @@ let IndicatorService = class IndicatorService {
     highs(klines) { return klines.map(k => k.high); }
     lows(klines) { return klines.map(k => k.low); }
     volumes(klines) { return klines.map(k => k.volume); }
+    tradeCounts(klines) { return klines.map(k => k.tradeCount ?? 0); }
 };
 exports.IndicatorService = IndicatorService;
 exports.IndicatorService = IndicatorService = __decorate([

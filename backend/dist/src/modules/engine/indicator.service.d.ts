@@ -6,6 +6,7 @@ export interface Kline {
     close: number;
     volume: number;
     closeTime: number;
+    tradeCount: number;
 }
 export interface BBResult {
     upper: number;
@@ -22,4 +23,5 @@ export declare class IndicatorService {
     highs(klines: Kline[]): number[];
     lows(klines: Kline[]): number[];
     volumes(klines: Kline[]): number[];
+    tradeCounts(klines: Kline[]): number[];
 }

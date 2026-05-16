@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
 
 export interface Kline {
-  openTime: number;
-  open:     number;
-  high:     number;
-  low:      number;
-  close:    number;
-  volume:   number;
-  closeTime:number;
+  openTime:   number;
+  open:       number;
+  high:       number;
+  low:        number;
+  close:      number;
+  volume:     number;
+  closeTime:  number;
+  tradeCount: number;
 }
 
 export interface BBResult {
@@ -21,7 +22,7 @@ export class IndicatorService {
 
   calcEMA(closes: number[], period: number): number {
     if (closes.length === 0) return 0;
-    if (closes.length < period) return closes.at(-1) ?? 0;
+    if (closes.length < period) return closes[closes.length - 1] ?? 0;
     const k = 2 / (period + 1);
     let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
     for (let i = period; i < closes.length; i++) {
@@ -49,7 +50,7 @@ export class IndicatorService {
 
   calcBB(closes: number[], period: number, stdDev: number): BBResult {
     if (closes.length < period) {
-      const last = closes.at(-1) ?? 0;
+      const last = closes[closes.length - 1] ?? 0;
       return { upper: last, middle: last, lower: last };
     }
     const slice  = closes.slice(-period);
@@ -72,9 +73,10 @@ export class IndicatorService {
     return trs.reduce((a, b) => a + b, 0) / trs.length;
   }
 
-  // klines 배열에서 추출 헬퍼
-  closes(klines: Kline[]):  number[] { return klines.map(k => k.close);  }
-  highs(klines: Kline[]):   number[] { return klines.map(k => k.high);   }
-  lows(klines: Kline[]):    number[] { return klines.map(k => k.low);    }
-  volumes(klines: Kline[]): number[] { return klines.map(k => k.volume); }
+  // kline 추출 헬퍼
+  closes(klines: Kline[]):      number[] { return klines.map(k => k.close); }
+  highs(klines: Kline[]):       number[] { return klines.map(k => k.high); }
+  lows(klines: Kline[]):        number[] { return klines.map(k => k.low); }
+  volumes(klines: Kline[]):     number[] { return klines.map(k => k.volume); }
+  tradeCounts(klines: Kline[]): number[] { return klines.map(k => k.tradeCount ?? 0); }
 }

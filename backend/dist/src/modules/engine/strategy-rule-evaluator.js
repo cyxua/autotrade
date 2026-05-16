@@ -31,9 +31,16 @@ function validateRule(rule) {
     if (!schema)
         return `알 수 없는 rule type: ${rule.type}`;
     for (const [key, meta] of Object.entries(schema)) {
-        if (meta.type === 'select')
-            continue;
         const val = rule.params[key];
+        if (meta.type === 'select') {
+            const effective = val ?? meta.default;
+            if (!meta.options?.includes(String(effective))) {
+                return `${rule.type}.${key}는 [${meta.options?.join(', ')}] 중 하나여야 합니다 (현재: ${effective})`;
+            }
+            if (val === undefined || val === null)
+                rule.params[key] = meta.default;
+            continue;
+        }
         if (val === undefined || val === null)
             return `${rule.type}.${key} 값이 필요합니다`;
         if (meta.min !== undefined && val < meta.min)
@@ -85,10 +92,9 @@ let StrategyRuleEvaluator = StrategyRuleEvaluator_1 = class StrategyRuleEvaluato
     evaluateRule(rule, klines) {
         const p = rule.params;
         const closes = this.indicator.closes(klines);
-        const volumes = this.indicator.volumes(klines);
         const highs = this.indicator.highs(klines);
         const lows = this.indicator.lows(klines);
-        const last = closes.at(-1) ?? 0;
+        const last = closes[closes.length - 1] ?? 0;
         switch (rule.type) {
             case 'RSI_RANGE': {
                 const rsi = this.indicator.calcRSI(closes, p.period);
@@ -127,21 +133,22 @@ let StrategyRuleEvaluator = StrategyRuleEvaluator_1 = class StrategyRuleEvaluato
                 const extreme = p.direction === 'HIGH'
                     ? Math.max(...slice.map(k => k.high))
                     : Math.min(...slice.map(k => k.low));
-                const passed = p.direction === 'HIGH' ? last > extreme : last < extreme;
-                return { value: parseFloat((last - extreme).toFixed(6)), passed };
+                return { value: parseFloat((last - extreme).toFixed(6)), passed: p.direction === 'HIGH' ? last > extreme : last < extreme };
             }
             case 'VOLUME_SPIKE': {
+                const volumes = this.indicator.volumes(klines);
                 const recent = volumes.slice(0, -1);
                 const avgVol = this.indicator.calcSMA(recent, Math.min(p.period, recent.length));
-                const curVol = volumes.at(-1) ?? 0;
+                const curVol = volumes[volumes.length - 1] ?? 0;
                 const ratio = avgVol > 0 ? curVol / avgVol : 0;
                 return { value: parseFloat(ratio.toFixed(4)), passed: ratio >= p.multiplier };
             }
             case 'TRADE_COUNT_SURGE': {
-                const recent = volumes.slice(0, -1);
-                const avgVol = this.indicator.calcSMA(recent, Math.min(p.period, recent.length));
-                const curVol = volumes.at(-1) ?? 0;
-                const ratio = avgVol > 0 ? curVol / avgVol : 0;
+                const counts = this.indicator.tradeCounts(klines);
+                const recent = counts.slice(0, -1);
+                const avg = this.indicator.calcSMA(recent, Math.min(p.period, recent.length));
+                const cur = counts[counts.length - 1] ?? 0;
+                const ratio = avg > 0 ? cur / avg : 0;
                 return { value: parseFloat(ratio.toFixed(4)), passed: ratio >= p.multiplier };
             }
             case 'ATR_RANGE': {

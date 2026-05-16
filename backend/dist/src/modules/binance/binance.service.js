@@ -179,7 +179,7 @@ let BinanceService = BinanceService_1 = class BinanceService {
         const res = await this.client.get('/fapi/v1/klines', { params });
         return res.data.map((k) => ({
             openTime: k[0], open: parseFloat(k[1]), high: parseFloat(k[2]),
-            low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]), closeTime: k[6],
+            low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]), closeTime: k[6], tradeCount: k[8] ?? 0,
         }));
     }
     getMode() { return this.mode; }

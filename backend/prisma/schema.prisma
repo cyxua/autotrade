@@ -56,6 +56,7 @@ enum StrategyType {
   BOLLINGER_BREAKOUT
   HIGH_LOW_BREAKOUT
   VOLUME_SPIKE
+  RULE_BASED
 }
 
 enum Timeframe {
