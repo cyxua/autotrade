@@ -165,6 +165,32 @@ export class BinanceService {
   async getStepSize(symbol: string): Promise<number> {
     return (await this.getSymbolFilters(symbol)).stepSize;
   }
+
+  // 거래용: symbol별 성공/실패 추적, getPositionsStrict 기반
+  async cancelAllOrdersStrict(symbols?: string[]): Promise<{
+    canceled: string[]; cancelErrors: { symbol: string; error: string }[];
+  }> {
+    let targets = symbols ?? [];
+    if (targets.length === 0) {
+      const positions = await this.getPositionsStrict();  // 실패 시 throw
+      targets = positions
+        .filter((p: any) => parseFloat(p.positionAmt) !== 0)
+        .map((p: any) => p.symbol as string);
+    }
+    const canceled: string[] = [];
+    const cancelErrors: { symbol: string; error: string }[] = [];
+    for (const sym of targets) {
+      try {
+        await this.signedRequest('DELETE', '/fapi/v1/allOpenOrders', { symbol: sym });
+        canceled.push(sym);
+      } catch (e: any) {
+        cancelErrors.push({ symbol: sym, error: e.message });
+        this.logger.error(`[${sym}] 주문 취소 실패: ${e.message}`);
+      }
+    }
+    return { canceled, cancelErrors };
+  }
+
   async getTickerPrice(symbol: string): Promise<number> {
     const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
     return parseFloat(res.data.price);

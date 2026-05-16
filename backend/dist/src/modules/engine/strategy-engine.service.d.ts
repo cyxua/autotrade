@@ -13,6 +13,7 @@ export declare class StrategyEngineService {
     startEngine(userId: string): Promise<void>;
     stopEngine(userId: string): void;
     private haltEngine;
+    private logRiskBlock;
     private scanStrategies;
     private riskGuard;
     private processStrategy;

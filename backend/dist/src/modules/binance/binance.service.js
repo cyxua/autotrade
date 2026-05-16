@@ -217,6 +217,28 @@ let BinanceService = BinanceService_1 = class BinanceService {
     async getStepSize(symbol) {
         return (await this.getSymbolFilters(symbol)).stepSize;
     }
+    async cancelAllOrdersStrict(symbols) {
+        let targets = symbols ?? [];
+        if (targets.length === 0) {
+            const positions = await this.getPositionsStrict();
+            targets = positions
+                .filter((p) => parseFloat(p.positionAmt) !== 0)
+                .map((p) => p.symbol);
+        }
+        const canceled = [];
+        const cancelErrors = [];
+        for (const sym of targets) {
+            try {
+                await this.signedRequest('DELETE', '/fapi/v1/allOpenOrders', { symbol: sym });
+                canceled.push(sym);
+            }
+            catch (e) {
+                cancelErrors.push({ symbol: sym, error: e.message });
+                this.logger.error(`[${sym}] 주문 취소 실패: ${e.message}`);
+            }
+        }
+        return { canceled, cancelErrors };
+    }
     async getTickerPrice(symbol) {
         const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
         return parseFloat(res.data.price);

@@ -36,5 +36,12 @@ export declare class BinanceService {
     }>;
     getOrderDetail(symbol: string, orderId: number): Promise<any>;
     getStepSize(symbol: string): Promise<number>;
+    cancelAllOrdersStrict(symbols?: string[]): Promise<{
+        canceled: string[];
+        cancelErrors: {
+            symbol: string;
+            error: string;
+        }[];
+    }>;
     getTickerPrice(symbol: string): Promise<number>;
 }

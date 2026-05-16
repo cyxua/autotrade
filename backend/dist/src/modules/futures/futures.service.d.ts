@@ -49,6 +49,7 @@ export declare class FuturesService {
         status: import(".prisma/client").$Enums.OrderStatus;
         leverage: number;
         marginType: import(".prisma/client").$Enums.MarginType;
+        strategyId: string | null;
         side: import(".prisma/client").$Enums.OrderSide;
         positionSide: import(".prisma/client").$Enums.PositionSide;
         quantity: number;
@@ -66,7 +67,6 @@ export declare class FuturesService {
         exitReason: string | null;
         errorMessage: string | null;
         filledAt: Date | null;
-        strategyId: string | null;
         positionId: string | null;
     })[]>;
 }
