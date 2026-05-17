@@ -83,6 +83,7 @@ export function TradingChart() {
 
     const init = async () => {
       const lc = await import('lightweight-charts');
+      if (!mountedRef.current) return;  // import 완료 후 언마운트 확인
       const { createChart, CrosshairMode } = lc;
 
       if (chartRef.current)    { try { chartRef.current.remove(); } catch {} chartRef.current = null; }
@@ -150,6 +151,8 @@ export function TradingChart() {
         finalSource = 'mock';
       }
 
+      if (!mountedRef.current) { try { rawChart.remove(); } catch {} return; }
+
       candleSeries.setData(candles.map(c => ({
         time:  c.time as unknown as Time,
         open: c.open, high: c.high, low: c.low, close: c.close,
@@ -178,8 +181,12 @@ export function TradingChart() {
       const observer = new ResizeObserver(() => {
         if (containerRef.current) chart.resize(containerRef.current.clientWidth, 320);
       });
-      observer.observe(containerRef.current!);
-      cleanup = () => observer.disconnect();
+      if (containerRef.current && mountedRef.current) {
+        observer.observe(containerRef.current);
+        cleanup = () => observer.disconnect();
+      } else {
+        observer.disconnect();
+      }
     };
 
     init();
