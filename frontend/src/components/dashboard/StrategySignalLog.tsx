@@ -101,7 +101,7 @@ export function StrategySignalLog() {
               </span>
               <span style={{ fontSize: '11px', color, fontWeight: '600' }}>
                 {log.reason}
-                {log.detail && (
+                {!!log.detail && (
                   <span style={{ fontWeight: 'normal', color: '#6B7280', marginLeft: '6px', fontSize: '10px' }}>
                     {summarizeDetail(log.detail)}
                   </span>

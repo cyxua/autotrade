@@ -185,12 +185,12 @@ export class StrategyEngineService {
       return { ok: false, reason: 'CONSEC_LOSS_EXCEEDED' };
     }
 
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const todayOrders = await this.prisma.order.count({
-      where: { userId, strategyId: strategy.id, createdAt: { gte: today } },
-    });
-    if (todayOrders >= (strategy.maxDailyTrades ?? 10)) {
-      await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'DAILY_TRADES_EXCEEDED');
+    // engineState.dailyTrades 기준 — MARKET 진입 주문만 카운트 (TP/SL 제외)
+    const currentDailyTrades = state.dailyTrades ?? 0;
+    const maxDailyTrades     = strategy.maxDailyTrades ?? 10;
+    if (currentDailyTrades >= maxDailyTrades) {
+      await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'DAILY_TRADES_EXCEEDED',
+        { dailyTrades: currentDailyTrades, maxDailyTrades });
       return { ok: false, reason: 'DAILY_TRADES_EXCEEDED' };
     }
 

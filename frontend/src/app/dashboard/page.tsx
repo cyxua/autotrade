@@ -93,8 +93,8 @@ export default function DashboardPage() {
   }, [loadSummary, loadBinanceData]);
 
   const isLive     = mode === 'LIVE';
-  const totalWallet = account?.totalWalletBalance    ?? summary?.account?.totalWalletBalance ?? '—';
-  const available   = account?.availableBalance      ?? summary?.account?.availableBalance   ?? '—';
+  const totalWallet = account?.totalWalletBalance ?? '—';
+  const available   = account?.availableBalance ?? '—';
   const unrealized  = account?.totalUnrealizedProfit ?? '—';
   const posCount    = positions.length || summary?.positions?.count || 0;
   const todayPnl    = summary?.todayStats?.realizedPnl ?? 0;
