@@ -102,7 +102,16 @@ export class BinanceService {
   }
   async setMarginType(symbol: string, marginType: string) {
     try { return await this.signedRequest('POST', '/fapi/v1/marginType', { symbol, marginType }); }
-    catch (err: any) { if (err.message?.includes('-4046')) return null; throw err; }
+    catch (err: any) {
+      // -4046: 이미 동일 마진 타입 설정됨 — 무시
+      const res = err.getResponse?.() ?? {};
+      const binanceCode = res.binanceCode ?? err.binanceCode;
+      const msgStr = String(res.message ?? err.message ?? '');
+      if (Number(binanceCode) === -4046 || msgStr.includes('No need to change margin type')) {
+        return null;
+      }
+      throw err;
+    }
   }
   async placeOrder(params: Record<string, any>) {
     return this.signedRequest('POST', '/fapi/v1/order', params);

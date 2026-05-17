@@ -155,8 +155,12 @@ let BinanceService = BinanceService_1 = class BinanceService {
             return await this.signedRequest('POST', '/fapi/v1/marginType', { symbol, marginType });
         }
         catch (err) {
-            if (err.message?.includes('-4046'))
+            const res = err.getResponse?.() ?? {};
+            const binanceCode = res.binanceCode ?? err.binanceCode;
+            const msgStr = String(res.message ?? err.message ?? '');
+            if (Number(binanceCode) === -4046 || msgStr.includes('No need to change margin type')) {
                 return null;
+            }
             throw err;
         }
     }
