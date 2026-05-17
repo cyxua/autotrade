@@ -66,13 +66,7 @@ export declare class EngineService {
         status: string;
         symbol: string;
         quantity: string;
-        remaining: any;
+        remaining: string;
         message: string;
-    } | {
-        status: string;
-        symbol: string;
-        quantity: string;
-        remaining?: undefined;
-        message?: undefined;
     }>;
 }

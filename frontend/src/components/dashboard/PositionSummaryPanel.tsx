@@ -22,8 +22,29 @@ export function PositionSummaryPanel() {
     if (!confirm(`${symbol} 포지션을 시장가로 청산하시겠습니까?`)) return;
     setClosingSymbol(symbol);
     try {
-      await api.post('/engine/close-position', { symbol });
-      alert(`✅ ${symbol} 청산 완료`);
+      const res    = await api.post('/engine/close-position', { symbol });
+      const result = res.data.data ?? res.data;
+      const st     = result?.status ?? 'UNKNOWN';
+
+      if (st === 'CLOSED') {
+        alert(`✅ ${symbol} 청산 완료`);
+      } else if (st === 'POSITION_STILL_OPEN') {
+        alert(
+          `⚠️ ${symbol} 청산 주문은 전송됐으나 포지션이 남아 있습니다.\n` +
+          `잔량: ${result.remaining ?? '?'}\n` +
+          `Binance 앱에서 직접 확인하세요.`
+        );
+      } else if (st === 'CLOSE_VERIFY_FAILED') {
+        alert(
+          `⚠️ ${symbol} 청산 주문 전송 후 포지션 재확인 실패\n` +
+          `${result.message ?? ''}\n` +
+          `Binance 앱에서 직접 확인하세요.`
+        );
+      } else if (st === 'NO_POSITION') {
+        alert(`ℹ️ ${symbol} 포지션 없음 (이미 청산됐거나 없습니다)`);
+      } else {
+        alert(`⚠️ ${symbol} 청산 결과 확인 필요 (status: ${st})`);
+      }
     } catch (error: unknown) {
       alert(getApiErrorMessage(error, '청산 실패'));
     } finally {

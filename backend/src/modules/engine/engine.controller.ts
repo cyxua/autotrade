@@ -12,7 +12,7 @@ export class EngineController {
   @Post('start') async start(@CurrentUser() u: any) { return { success: true, data: await this.engine.start(u.id) }; }
   @Post('stop') async stop(@CurrentUser() u: any) { return { success: true, data: await this.engine.stop(u.id) }; }
   @Post('emergency-stop') async emergencyStop(@CurrentUser() u: any, @Body() body: any) {
-    return { success: true, data: await this.engine.emergencyStop(u.id, body.closePositions ?? false) };
+    return { success: true, data: await this.engine.emergencyStop(u.id, body.closePositions ?? true) };
   }
 
   @Post('reset-emergency')

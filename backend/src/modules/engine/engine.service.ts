@@ -137,6 +137,12 @@ export class EngineService {
         const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
         const qtyStr    = (Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize).toFixed(precision);
 
+        if (Number(qtyStr) <= 0) {
+          closeErrors.push({ symbol: sym, reason: 'CLOSE_QTY_ZERO', posAmt: String(posAmt), qty: qtyStr });
+          this.logger.error(`[${sym}] 청산 수량 0 — 스킵`);
+          continue;
+        }
+
         closeAttempts++;
         try {
           // reduceOnly=true 시도 (포지션 역방향 신규 진입 방지)
@@ -163,9 +169,13 @@ export class EngineService {
               this.logger.log(`[${sym}] 청산 확인 완료`);
             }
           } catch (ve: any) {
-            // 재확인 실패는 경고만 (주문 전송은 성공)
-            this.logger.warn(`[${sym}] 청산 후 포지션 재확인 실패: ${ve.message}`);
-            closeSuccess++;
+            // 재확인 실패 — 성공으로 처리하지 않음 (사용자 직접 확인 필요)
+            closeErrors.push({
+              symbol: sym, reason: 'CLOSE_VERIFY_FAILED',
+              message: `청산 주문 전송 후 포지션 재확인 실패: ${ve.message}. Binance 앱에서 직접 확인하세요.`,
+              posAmt: String(posAmt), qty: qtyStr,
+            });
+            this.logger.error(`[${sym}] 청산 후 포지션 재확인 실패 — 수동 확인 필요: ${ve.message}`);
           }
 
         } catch (e: any) {
@@ -248,6 +258,10 @@ export class EngineService {
     const precision = filters.stepSize < 1 ? (String(filters.stepSize).split('.')[1]?.length ?? 0) : 0;
     const qtyStr    = (Math.floor(Math.abs(posAmt) / filters.stepSize) * filters.stepSize).toFixed(precision);
 
+    if (Number(qtyStr) <= 0) {
+      throw new BadRequestException({ code: 'CLOSE_QTY_ZERO', message: `청산 수량 계산 결과 0 — posAmt:${posAmt}, stepSize:${filters.stepSize}` });
+    }
+
     try {
       await this.binance.placeOrder({
         symbol, side, positionSide: 'BOTH', type: 'MARKET', quantity: qtyStr, reduceOnly: 'true',
@@ -267,19 +281,23 @@ export class EngineService {
 
     // 청산 후 포지션 재확인
     await sleep(1500);
-    const verify    = await this.binance.getPositionsStrict();
-    const stillOpen = verify.find((v: any) => v.symbol === symbol && parseFloat(v.positionAmt) !== 0);
-
-    if (stillOpen) {
-      return {
-        status:   'POSITION_STILL_OPEN',
-        symbol,
-        quantity: qtyStr,
-        remaining: stillOpen.positionAmt,
-        message:  '청산 주문은 전송됐으나 포지션이 남아 있습니다. 잠시 후 재확인하세요.',
-      };
+    let closeStatus = 'CLOSED';
+    let remaining: string | undefined;
+    let verifyMessage: string | undefined;
+    try {
+      const verify    = await this.binance.getPositionsStrict();
+      const stillOpen = verify.find((v: any) => v.symbol === symbol && parseFloat(v.positionAmt) !== 0);
+      if (stillOpen) {
+        closeStatus    = 'POSITION_STILL_OPEN';
+        remaining      = String(stillOpen.positionAmt);
+        verifyMessage  = '청산 주문은 전송됐으나 포지션이 남아 있습니다. Binance 앱에서 직접 확인하세요.';
+      }
+    } catch (ve: any) {
+      closeStatus   = 'CLOSE_VERIFY_FAILED';
+      verifyMessage = `청산 주문 전송 후 포지션 재확인 실패: ${ve.message}. Binance 앱에서 직접 확인하세요.`;
+      this.logger.error(`[${symbol}] 청산 후 포지션 재확인 실패: ${ve.message}`);
     }
 
-    return { status: 'CLOSED', symbol, quantity: qtyStr };
+    return { status: closeStatus, symbol, quantity: qtyStr, remaining, message: verifyMessage };
   }
 }

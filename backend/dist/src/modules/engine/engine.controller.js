@@ -26,7 +26,7 @@ let EngineController = class EngineController {
     async start(u) { return { success: true, data: await this.engine.start(u.id) }; }
     async stop(u) { return { success: true, data: await this.engine.stop(u.id) }; }
     async emergencyStop(u, body) {
-        return { success: true, data: await this.engine.emergencyStop(u.id, body.closePositions ?? false) };
+        return { success: true, data: await this.engine.emergencyStop(u.id, body.closePositions ?? true) };
     }
     async resetEmergency(u) {
         return { success: true, data: await this.engine.resetEmergencyStop(u.id) };

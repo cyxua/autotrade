@@ -81,8 +81,8 @@ export function EmergencyStopButton() {
 
               {/* 요약 */}
               <div style={{ fontSize: '12px', color: '#9CA3AF', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                <span>일반 주문 취소: <b style={{ color: '#D1D5DB' }}>{result.canceledNormalOrders}건</b></span>
-                <span>Algo 주문 취소: <b style={{ color: '#D1D5DB' }}>{result.canceledAlgoOrders}건</b></span>
+                <span>일반 주문 취소 요청 성공: <b style={{ color: '#D1D5DB' }}>{result.canceledNormalOrders}심볼</b></span>
+                <span>Algo 주문 취소 요청 성공: <b style={{ color: '#D1D5DB' }}>{result.canceledAlgoOrders}심볼</b></span>
                 {result.closePositionsRequested && (
                   <>
                     <span>포지션 발견: <b style={{ color: '#D1D5DB' }}>{result.positionsFound}개</b></span>
@@ -107,6 +107,15 @@ export function EmergencyStopButton() {
                   <p style={{ fontSize: '11px', color: '#F87171', marginTop: '8px' }}>
                     → Binance 앱에서 수동으로 포지션을 확인하고 청산하세요.
                   </p>
+                </div>
+              )}
+
+              {/* 포지션 조회 실패 */}
+              {result.positionFetchError && (
+                <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '8px', padding: '10px', marginBottom: '12px' }}>
+                  <p style={{ fontSize: '11px', fontWeight: 'bold', color: '#F87171', marginBottom: '4px' }}>⚠️ 포지션 조회 실패</p>
+                  <p style={{ fontSize: '10px', color: '#FCA5A5' }}>{result.positionFetchError}</p>
+                  <p style={{ fontSize: '10px', color: '#F87171', marginTop: '4px' }}>→ Binance 앱에서 포지션과 주문을 직접 확인하세요.</p>
                 </div>
               )}
 
