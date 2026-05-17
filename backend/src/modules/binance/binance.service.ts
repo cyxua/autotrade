@@ -202,6 +202,35 @@ export class BinanceService {
     return this.signedRequest('GET', '/fapi/v1/income', params);
   }
 
+
+  // ── Algo Order API (USDⓈ-M Futures 조건부 주문 전용) ────────────────
+  // STOP_MARKET / TAKE_PROFIT_MARKET / STOP / TAKE_PROFIT / TRAILING_STOP_MARKET
+  // POST /fapi/v1/algoOrder
+  async placeAlgoOrder(params: Record<string, string | number | boolean>): Promise<any> {
+    return this.signedRequest('POST', '/fapi/v1/algoOrder', params);
+  }
+
+  // DELETE /fapi/v1/algoOrder
+  async cancelAlgoOrder(symbol: string, algoId?: number, clientAlgoId?: string): Promise<any> {
+    const params: Record<string, string | number> = { symbol };
+    if (algoId)       params.algoId       = algoId;
+    if (clientAlgoId) params.clientAlgoId = clientAlgoId;
+    return this.signedRequest('DELETE', '/fapi/v1/algoOrder', params);
+  }
+
+  // DELETE /fapi/v1/algoOpenOrders — 심볼의 모든 미체결 Algo 주문 취소
+  async cancelAllAlgoOrders(symbol: string): Promise<any> {
+    return this.signedRequest('DELETE', '/fapi/v1/algoOpenOrders', { symbol });
+  }
+
+  // GET /fapi/v1/algoOrder
+  async getAlgoOrder(symbol: string, algoId?: number, clientAlgoId?: string): Promise<any> {
+    const params: Record<string, string | number> = { symbol };
+    if (algoId)       params.algoId       = algoId;
+    if (clientAlgoId) params.clientAlgoId = clientAlgoId;
+    return this.signedRequest('GET', '/fapi/v1/algoOrder', params);
+  }
+
   async getTickerPrice(symbol: string): Promise<number> {
     const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
     return parseFloat(res.data.price);

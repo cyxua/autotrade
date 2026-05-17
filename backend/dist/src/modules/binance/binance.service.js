@@ -247,6 +247,28 @@ let BinanceService = BinanceService_1 = class BinanceService {
             params.startTime = startTime;
         return this.signedRequest('GET', '/fapi/v1/income', params);
     }
+    async placeAlgoOrder(params) {
+        return this.signedRequest('POST', '/fapi/v1/algoOrder', params);
+    }
+    async cancelAlgoOrder(symbol, algoId, clientAlgoId) {
+        const params = { symbol };
+        if (algoId)
+            params.algoId = algoId;
+        if (clientAlgoId)
+            params.clientAlgoId = clientAlgoId;
+        return this.signedRequest('DELETE', '/fapi/v1/algoOrder', params);
+    }
+    async cancelAllAlgoOrders(symbol) {
+        return this.signedRequest('DELETE', '/fapi/v1/algoOpenOrders', { symbol });
+    }
+    async getAlgoOrder(symbol, algoId, clientAlgoId) {
+        const params = { symbol };
+        if (algoId)
+            params.algoId = algoId;
+        if (clientAlgoId)
+            params.clientAlgoId = clientAlgoId;
+        return this.signedRequest('GET', '/fapi/v1/algoOrder', params);
+    }
     async getTickerPrice(symbol) {
         const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
         return parseFloat(res.data.price);

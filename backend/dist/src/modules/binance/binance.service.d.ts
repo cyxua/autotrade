@@ -44,5 +44,9 @@ export declare class BinanceService {
         }[];
     }>;
     getIncome(symbol: string, incomeType: string, startTime?: number, limit?: number): Promise<any[]>;
+    placeAlgoOrder(params: Record<string, string | number | boolean>): Promise<any>;
+    cancelAlgoOrder(symbol: string, algoId?: number, clientAlgoId?: string): Promise<any>;
+    cancelAllAlgoOrders(symbol: string): Promise<any>;
+    getAlgoOrder(symbol: string, algoId?: number, clientAlgoId?: string): Promise<any>;
     getTickerPrice(symbol: string): Promise<number>;
 }

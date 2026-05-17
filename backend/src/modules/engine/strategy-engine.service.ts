@@ -400,21 +400,30 @@ export class StrategyEngineService {
       let tpOk        = strategy.takeProfitPct <= 0;
       let slOk        = strategy.stopLossPct  <= 0;
 
-      // TP 주문 + DB 저장
+      // TP 주문 — Algo Order API (POST /fapi/v1/algoOrder)
+      // closePosition=true 시 quantity, reduceOnly 제거 필수
       if (strategy.takeProfitPct > 0) {
         const tp = formatPrice(fillPrice * (1 + pDir * strategy.takeProfitPct / 100), filters.tickSize);
         try {
-          const tpRes = await this.binance.placeOrder({
-            symbol, side: closeSide, positionSide: 'BOTH',
-            type: 'TAKE_PROFIT_MARKET', stopPrice: tp, closePosition: 'true',
+          const tpRes = await this.binance.placeAlgoOrder({
+            algoType:      'CONDITIONAL',
+            symbol,
+            side:          closeSide,
+            positionSide:  'BOTH',
+            type:          'TAKE_PROFIT_MARKET',
+            triggerPrice:  tp,          // stopPrice → triggerPrice
+            closePosition: 'true',      // 전체 포지션 종료
+            workingType:   'MARK_PRICE', // 마크가 기준 트리거
+            priceProtect:  'FALSE',
           });
+          const algoId = tpRes.algoId ? String(tpRes.algoId) : (tpRes.clientAlgoId ?? null);
           await this.prisma.order.create({
             data: {
               userId, strategyId: strategy.id ?? null,
-              binanceOrderId: toOrderId(tpRes.orderId),   // null 가능
+              binanceOrderId: algoId,
               symbol, side: closeSide as any, positionSide: 'BOTH' as any,
               orderType: 'TAKE_PROFIT_MARKET' as any,
-              status:    (tpRes.status ?? 'NEW') as any,
+              status:    (tpRes.algoStatus ?? 'NEW') as any,
               quantity:  parseFloat(qty),
               stopPrice: parseFloat(tp),
               leverage:  strategy.leverage,
@@ -422,7 +431,7 @@ export class StrategyEngineService {
               exitReason: 'TAKE_PROFIT',
             },
           }).catch(() => {});
-          this.logger.log(`[${symbol}] TP: ${tp}`);
+          this.logger.log(`[${symbol}] TP Algo: ${tp} (algoId: ${algoId})`);
           tpOk = true;
         } catch (e: any) {
           await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'TP_ORDER_FAILED',
@@ -430,21 +439,30 @@ export class StrategyEngineService {
         }
       }
 
-      // SL 주문 + DB 저장
+      // SL 주문 — Algo Order API (POST /fapi/v1/algoOrder)
+      // closePosition=true 시 quantity, reduceOnly 제거 필수
       if (strategy.stopLossPct > 0) {
         const sl = formatPrice(fillPrice * (1 - pDir * strategy.stopLossPct / 100), filters.tickSize);
         try {
-          const slRes = await this.binance.placeOrder({
-            symbol, side: closeSide, positionSide: 'BOTH',
-            type: 'STOP_MARKET', stopPrice: sl, closePosition: 'true',
+          const slRes = await this.binance.placeAlgoOrder({
+            algoType:      'CONDITIONAL',
+            symbol,
+            side:          closeSide,
+            positionSide:  'BOTH',
+            type:          'STOP_MARKET',
+            triggerPrice:  sl,           // stopPrice → triggerPrice
+            closePosition: 'true',       // 전체 포지션 종료
+            workingType:   'MARK_PRICE', // 마크가 기준 트리거
+            priceProtect:  'FALSE',
           });
+          const algoId = slRes.algoId ? String(slRes.algoId) : (slRes.clientAlgoId ?? null);
           await this.prisma.order.create({
             data: {
               userId, strategyId: strategy.id ?? null,
-              binanceOrderId: toOrderId(slRes.orderId),   // null 가능
+              binanceOrderId: algoId,
               symbol, side: closeSide as any, positionSide: 'BOTH' as any,
               orderType: 'STOP_MARKET' as any,
-              status:    (slRes.status ?? 'NEW') as any,
+              status:    (slRes.algoStatus ?? 'NEW') as any,
               quantity:  parseFloat(qty),
               stopPrice: parseFloat(sl),
               leverage:  strategy.leverage,
@@ -452,10 +470,10 @@ export class StrategyEngineService {
               exitReason: 'STOP_LOSS',
             },
           }).catch(() => {});
-          this.logger.log(`[${symbol}] SL: ${sl}`);
+          this.logger.log(`[${symbol}] SL Algo: ${sl} (algoId: ${algoId})`);
           slOk = true;
         } catch (e: any) {
-          this.logger.error(`[${symbol}] SL 실패: ${e.message}`);
+          this.logger.error(`[${symbol}] SL Algo 실패: ${e.message}`);
         }
       }
 

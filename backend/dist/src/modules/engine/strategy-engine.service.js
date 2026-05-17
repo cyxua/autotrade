@@ -374,17 +374,25 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             if (strategy.takeProfitPct > 0) {
                 const tp = formatPrice(fillPrice * (1 + pDir * strategy.takeProfitPct / 100), filters.tickSize);
                 try {
-                    const tpRes = await this.binance.placeOrder({
-                        symbol, side: closeSide, positionSide: 'BOTH',
-                        type: 'TAKE_PROFIT_MARKET', stopPrice: tp, closePosition: 'true',
+                    const tpRes = await this.binance.placeAlgoOrder({
+                        algoType: 'CONDITIONAL',
+                        symbol,
+                        side: closeSide,
+                        positionSide: 'BOTH',
+                        type: 'TAKE_PROFIT_MARKET',
+                        triggerPrice: tp,
+                        closePosition: 'true',
+                        workingType: 'MARK_PRICE',
+                        priceProtect: 'FALSE',
                     });
+                    const algoId = tpRes.algoId ? String(tpRes.algoId) : (tpRes.clientAlgoId ?? null);
                     await this.prisma.order.create({
                         data: {
                             userId, strategyId: strategy.id ?? null,
-                            binanceOrderId: toOrderId(tpRes.orderId),
+                            binanceOrderId: algoId,
                             symbol, side: closeSide, positionSide: 'BOTH',
                             orderType: 'TAKE_PROFIT_MARKET',
-                            status: (tpRes.status ?? 'NEW'),
+                            status: (tpRes.algoStatus ?? 'NEW'),
                             quantity: parseFloat(qty),
                             stopPrice: parseFloat(tp),
                             leverage: strategy.leverage,
@@ -392,7 +400,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                             exitReason: 'TAKE_PROFIT',
                         },
                     }).catch(() => { });
-                    this.logger.log(`[${symbol}] TP: ${tp}`);
+                    this.logger.log(`[${symbol}] TP Algo: ${tp} (algoId: ${algoId})`);
                     tpOk = true;
                 }
                 catch (e) {
@@ -402,17 +410,25 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
             if (strategy.stopLossPct > 0) {
                 const sl = formatPrice(fillPrice * (1 - pDir * strategy.stopLossPct / 100), filters.tickSize);
                 try {
-                    const slRes = await this.binance.placeOrder({
-                        symbol, side: closeSide, positionSide: 'BOTH',
-                        type: 'STOP_MARKET', stopPrice: sl, closePosition: 'true',
+                    const slRes = await this.binance.placeAlgoOrder({
+                        algoType: 'CONDITIONAL',
+                        symbol,
+                        side: closeSide,
+                        positionSide: 'BOTH',
+                        type: 'STOP_MARKET',
+                        triggerPrice: sl,
+                        closePosition: 'true',
+                        workingType: 'MARK_PRICE',
+                        priceProtect: 'FALSE',
                     });
+                    const algoId = slRes.algoId ? String(slRes.algoId) : (slRes.clientAlgoId ?? null);
                     await this.prisma.order.create({
                         data: {
                             userId, strategyId: strategy.id ?? null,
-                            binanceOrderId: toOrderId(slRes.orderId),
+                            binanceOrderId: algoId,
                             symbol, side: closeSide, positionSide: 'BOTH',
                             orderType: 'STOP_MARKET',
-                            status: (slRes.status ?? 'NEW'),
+                            status: (slRes.algoStatus ?? 'NEW'),
                             quantity: parseFloat(qty),
                             stopPrice: parseFloat(sl),
                             leverage: strategy.leverage,
@@ -420,11 +436,11 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                             exitReason: 'STOP_LOSS',
                         },
                     }).catch(() => { });
-                    this.logger.log(`[${symbol}] SL: ${sl}`);
+                    this.logger.log(`[${symbol}] SL Algo: ${sl} (algoId: ${algoId})`);
                     slOk = true;
                 }
                 catch (e) {
-                    this.logger.error(`[${symbol}] SL 실패: ${e.message}`);
+                    this.logger.error(`[${symbol}] SL Algo 실패: ${e.message}`);
                 }
             }
             if (!slOk) {
