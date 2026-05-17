@@ -75,6 +75,7 @@ export declare class DashboardController {
                     symbol: string;
                     createdAt: Date;
                 }[];
+                criticalWindowMinutes: number;
                 isSafeToStartAutoTrade: boolean;
                 fetchErrors: string[];
             };

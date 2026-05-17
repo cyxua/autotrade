@@ -9,8 +9,9 @@ interface HealthFlags {
   unprotectedPositions:  string[];
   hasCriticalRiskBlock:  boolean;
   criticalBlockReasons:  { reason: string; symbol: string; createdAt: string }[];
-  isSafeToStartAutoTrade:boolean;
-  fetchErrors:           string[];
+  isSafeToStartAutoTrade:  boolean;
+  criticalWindowMinutes:   number;
+  fetchErrors:             string[];
 }
 interface HealthData {
   engineState:      { status: string; dailyTrades: number; dailyPnl: number; consecLossCount: number; stopReason: string | null };
@@ -160,6 +161,7 @@ export function TradingHealthCard() {
         {flags?.hasCriticalRiskBlock && (
           <div style={{ marginBottom: '10px' }}>
             <p style={{ fontSize: '11px', color: '#F87171', fontWeight: '600', marginBottom: '6px' }}>⚠️ 치명 리스크 로그</p>
+            <p style={{ fontSize: '10px', color: '#6B7280', marginBottom: '4px' }}>※ 최근 {data?.healthFlags?.criticalWindowMinutes ?? 60}분 이내 기준</p>
             {flags.criticalBlockReasons.map((b, i) => (
               <div key={i} style={{ background: 'rgba(239,68,68,0.08)', borderRadius: '6px', padding: '6px 8px', marginBottom: '3px', fontSize: '10px' }}>
                 <span style={{ color: '#F87171', fontWeight: 'bold' }}>{b.reason}</span>

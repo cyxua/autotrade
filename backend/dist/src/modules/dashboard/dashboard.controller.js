@@ -22,6 +22,21 @@ const CRITICAL_REASONS = new Set([
     'ENTRY_ORDER_UNPROTECTED', 'SL_ORDER_FAILED',
     'ENTRY_ORDER_STATUS_UNKNOWN', 'POSITION_STILL_OPEN', 'CLOSE_VERIFY_FAILED',
 ]);
+function isValidSlAlgo(o, positionAmt) {
+    if (o.type !== 'STOP_MARKET')
+        return false;
+    const cp = String(o.closePosition);
+    if (cp !== 'true' && cp !== 'TRUE')
+        return false;
+    const validStatus = ['NEW', 'ACCEPTED', 'WORKING'];
+    if (!validStatus.includes(o.algoStatus))
+        return false;
+    if (positionAmt > 0 && o.side !== 'SELL')
+        return false;
+    if (positionAmt < 0 && o.side !== 'BUY')
+        return false;
+    return true;
+}
 let DashboardController = class DashboardController {
     prisma;
     binance;
@@ -38,73 +53,126 @@ let DashboardController = class DashboardController {
         ]);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const todayOrders = await this.prisma.order.findMany({ where: { userId: u.id, status: 'FILLED', filledAt: { gte: today } } });
+        const todayOrders = await this.prisma.order.findMany({
+            where: { userId: u.id, status: 'FILLED', filledAt: { gte: today } },
+        });
         const wins = todayOrders.filter(o => (o.realizedPnl ?? 0) > 0).length;
         return {
             success: true,
             data: {
-                engine: { status: engineState?.status ?? 'STOPPED', tradingMode: apiConfig?.tradingMode ?? 'TESTNET', dailyPnl: engineState?.dailyPnl ?? 0, dailyTrades: engineState?.dailyTrades ?? 0, consecLossCount: engineState?.consecLossCount ?? 0 },
-                positions: { count: positions.length, totalUnrealizedPnl: positions.reduce((s, p) => s + (p.unrealizedPnl ?? 0), 0) },
-                strategies: { total: strategies.length, enabled: strategies.filter(s => s.enabled).length },
-                todayStats: { realizedPnl: todayOrders.reduce((s, o) => s + (o.realizedPnl ?? 0), 0), trades: todayOrders.length, winRate: todayOrders.length > 0 ? wins / todayOrders.length : 0 },
+                engine: {
+                    status: engineState?.status ?? 'STOPPED',
+                    tradingMode: apiConfig?.tradingMode ?? 'TESTNET',
+                    dailyPnl: engineState?.dailyPnl ?? 0,
+                    dailyTrades: engineState?.dailyTrades ?? 0,
+                    consecLossCount: engineState?.consecLossCount ?? 0,
+                },
+                positions: {
+                    count: positions.length,
+                    totalUnrealizedPnl: positions.reduce((s, p) => s + (p.unrealizedPnl ?? 0), 0),
+                },
+                strategies: {
+                    total: strategies.length,
+                    enabled: strategies.filter(s => s.enabled).length,
+                },
+                todayStats: {
+                    realizedPnl: todayOrders.reduce((s, o) => s + (o.realizedPnl ?? 0), 0),
+                    trades: todayOrders.length,
+                    winRate: todayOrders.length > 0 ? wins / todayOrders.length : 0,
+                },
             },
         };
     }
     async tradingHealth(u) {
-        const errors = [];
+        const fetchErrors = [];
         const engineState = await this.prisma.engineState.findUnique({ where: { userId: u.id } });
-        let currentPositions = [];
+        let apiLoaded = false;
         try {
             await this.binance.loadApiConfig(u.id);
-            const raw = await this.binance.getPositionsStrict();
-            currentPositions = raw
-                .filter((p) => parseFloat(p.positionAmt) !== 0)
-                .map((p) => ({
-                symbol: p.symbol,
-                positionAmt: p.positionAmt,
-                entryPrice: p.entryPrice,
-                markPrice: p.markPrice,
-                unrealizedProfit: p.unRealizedProfit ?? p.unrealizedProfit ?? '0',
-                liquidationPrice: p.liquidationPrice,
-                leverage: p.leverage,
-                marginType: p.marginType,
-            }));
+            apiLoaded = true;
         }
         catch (e) {
-            errors.push(`POSITION_FETCH: ${e.message}`);
+            fetchErrors.push(`API_CONFIG_LOAD_FAILED: ${e.message}`);
         }
+        const activeStrategies = await this.prisma.strategy.findMany({
+            where: { userId: u.id, enabled: true }, select: { symbol: true },
+        });
+        const strategySymbols = [...new Set(activeStrategies.map(s => s.symbol))];
+        let currentPositions = [];
+        let positionSymbols = [];
+        if (apiLoaded) {
+            try {
+                const raw = await this.binance.getPositionsStrict();
+                currentPositions = raw
+                    .filter((p) => parseFloat(p.positionAmt) !== 0)
+                    .map((p) => ({
+                    symbol: p.symbol,
+                    positionAmt: p.positionAmt,
+                    entryPrice: p.entryPrice,
+                    markPrice: p.markPrice,
+                    unrealizedProfit: p.unRealizedProfit ?? p.unrealizedProfit ?? '0',
+                    liquidationPrice: p.liquidationPrice,
+                    leverage: p.leverage,
+                    marginType: p.marginType,
+                }));
+                positionSymbols = currentPositions.map(p => p.symbol);
+            }
+            catch (e) {
+                fetchErrors.push(`POSITION_FETCH: ${e.message}`);
+            }
+        }
+        const allSymbols = [...new Set([...positionSymbols, ...strategySymbols])];
         let openOrders = [];
-        try {
-            const raw = await this.binance.getOpenOrders();
-            openOrders = raw.map((o) => ({
-                symbol: o.symbol,
-                orderId: o.orderId,
-                type: o.type,
-                side: o.side,
-                price: o.price,
-                quantity: o.origQty,
-                status: o.status,
-            }));
-        }
-        catch (e) {
-            errors.push(`OPEN_ORDERS_FETCH: ${e.message}`);
+        if (apiLoaded) {
+            try {
+                const raw = await this.binance.getOpenOrders();
+                openOrders = raw.map((o) => ({
+                    symbol: o.symbol,
+                    orderId: o.orderId,
+                    type: o.type,
+                    side: o.side,
+                    price: o.price,
+                    quantity: o.origQty,
+                    status: o.status,
+                }));
+            }
+            catch (e) {
+                fetchErrors.push(`OPEN_ORDERS_FETCH: ${e.message}`);
+            }
         }
         let openAlgoOrders = [];
-        try {
-            const raw = await this.binance.getOpenAlgoOrders();
-            openAlgoOrders = raw.map((o) => ({
-                symbol: o.symbol,
-                algoId: o.algoId,
-                clientAlgoId: o.clientAlgoId,
-                type: o.type,
-                side: o.side,
-                triggerPrice: o.triggerPrice ?? o.stopPrice,
-                algoStatus: o.algoStatus,
-                closePosition: o.closePosition,
-            }));
-        }
-        catch (e) {
-            errors.push(`ALGO_ORDERS_FETCH: ${e.message}`);
+        if (apiLoaded) {
+            try {
+                if (allSymbols.length > 0) {
+                    const results = await Promise.all(allSymbols.map(sym => this.binance.getOpenAlgoOrders(sym).catch(() => [])));
+                    openAlgoOrders = results.flat().map((o) => ({
+                        symbol: o.symbol,
+                        algoId: o.algoId,
+                        clientAlgoId: o.clientAlgoId,
+                        type: o.type,
+                        side: o.side,
+                        triggerPrice: o.triggerPrice ?? o.stopPrice,
+                        algoStatus: o.algoStatus,
+                        closePosition: o.closePosition,
+                    }));
+                }
+                else {
+                    const raw = await this.binance.getOpenAlgoOrders();
+                    openAlgoOrders = raw.map((o) => ({
+                        symbol: o.symbol,
+                        algoId: o.algoId,
+                        clientAlgoId: o.clientAlgoId,
+                        type: o.type,
+                        side: o.side,
+                        triggerPrice: o.triggerPrice ?? o.stopPrice,
+                        algoStatus: o.algoStatus,
+                        closePosition: o.closePosition,
+                    }));
+                }
+            }
+            catch (e) {
+                fetchErrors.push(`ALGO_ORDERS_FETCH: ${e.message}`);
+            }
         }
         const recentBotOrders = await this.prisma.order.findMany({
             where: { userId: u.id },
@@ -117,24 +185,28 @@ let DashboardController = class DashboardController {
                 binanceOrderId: true, createdAt: true,
             },
         });
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
         const recentRiskBlocks = await this.prisma.riskBlockLog.findMany({
             where: { userId: u.id },
             orderBy: { createdAt: 'desc' },
             take: 20,
             select: { id: true, symbol: true, reason: true, detail: true, createdAt: true },
         });
-        const slAlgoSymbols = new Set(openAlgoOrders.filter(o => o.type === 'STOP_MARKET').map(o => o.symbol));
+        const criticalBlocks = recentRiskBlocks.filter(b => CRITICAL_REASONS.has(b.reason) && b.createdAt >= oneHourAgo);
+        const unprotectedPositions = currentPositions.filter(pos => {
+            const posAmt = parseFloat(pos.positionAmt);
+            const validSl = openAlgoOrders.some(o => o.symbol === pos.symbol && isValidSlAlgo(o, posAmt));
+            return !validSl;
+        });
         const hasOpenPosition = currentPositions.length > 0;
         const hasOpenAlgoOrders = openAlgoOrders.length > 0;
-        const unprotectedPositions = currentPositions.filter(p => !slAlgoSymbols.has(p.symbol));
         const hasUnprotectedPosition = unprotectedPositions.length > 0;
-        const criticalBlocks = recentRiskBlocks.filter(b => CRITICAL_REASONS.has(b.reason));
         const hasCriticalRiskBlock = criticalBlocks.length > 0;
         const isSafeToStartAutoTrade = !hasOpenPosition &&
             openOrders.length === 0 &&
             !hasOpenAlgoOrders &&
             !hasCriticalRiskBlock &&
-            errors.length === 0;
+            fetchErrors.length === 0;
         return {
             success: true,
             data: {
@@ -156,9 +228,14 @@ let DashboardController = class DashboardController {
                     hasUnprotectedPosition,
                     unprotectedPositions: unprotectedPositions.map(p => p.symbol),
                     hasCriticalRiskBlock,
-                    criticalBlockReasons: criticalBlocks.slice(0, 5).map(b => ({ reason: b.reason, symbol: b.symbol, createdAt: b.createdAt })),
+                    criticalBlockReasons: criticalBlocks.slice(0, 5).map(b => ({
+                        reason: b.reason,
+                        symbol: b.symbol,
+                        createdAt: b.createdAt,
+                    })),
+                    criticalWindowMinutes: 60,
                     isSafeToStartAutoTrade,
-                    fetchErrors: errors,
+                    fetchErrors,
                 },
             },
         };
