@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
 import type { EvalMode, StrategyParams } from '@/lib/strategyRules';
 import { DEFAULT_PARAMS } from '@/lib/strategyRules';
 import { RuleBuilder } from '@/components/settings/RuleBuilder';
@@ -10,18 +11,39 @@ const inp: React.CSSProperties = { width: '100%', background: '#1F2937', border:
 const lbl: React.CSSProperties = { fontSize: '12px', color: '#9CA3AF', display: 'block', marginBottom: '4px' };
 const sec: React.CSSProperties = { background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '20px', marginBottom: '16px' };
 
+// 전략 폼 타입 — API 응답과 일치
+interface StrategyForm {
+  name:             string;
+  type?:            string;
+  symbol:           string;
+  timeframe:        string;
+  positionSizeUsdt: number;
+  leverage:         number;
+  marginType:       string;
+  allowLong:        boolean;
+  allowShort:       boolean;
+  takeProfitPct:    number;
+  stopLossPct:      number;
+  trailingStopPct:  number;
+  maxPositions:     number;
+  maxDailyLoss:     number;
+  maxDailyTrades:   number;
+  stopOnConsecLoss: number;
+  params:           StrategyParams;
+}
+
 export default function EditStrategyPage() {
-  const { id } = useParams<{ id: string }>();
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [form, setForm] = useState<Record<string, unknown> | null>(null);
+  const { id }                  = useParams<{ id: string }>();
+  const router                  = useRouter();
+  const [loading, setLoading]   = useState(false);
+  const [msg, setMsg]           = useState('');
+  const [form, setForm]         = useState<StrategyForm | null>(null);
 
   useEffect(() => {
     api.get(`/strategies/${id}`)
       .then(r => {
-        const d = r.data.data;
-        if (!d.params || !d.params.evalMode) d.params = { ...DEFAULT_PARAMS };
+        const d = r.data.data as StrategyForm;
+        if (!d.params?.evalMode) d.params = { ...DEFAULT_PARAMS };
         setForm(d);
       })
       .catch(() => router.push('/strategies'));
@@ -29,21 +51,19 @@ export default function EditStrategyPage() {
 
   if (!form) return <div style={{ color: '#9CA3AF', padding: '48px', textAlign: 'center' }}>로딩 중...</div>;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const set = (k: string, v: any) => setForm((p: any) => ({ ...p, [k]: v }));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const setParam = (k: keyof StrategyParams, v: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setForm((p: any) => ({ ...p, params: { ...p.params, [k]: v } }));
+  // 제네릭 타입으로 any 제거
+  const set = <K extends keyof StrategyForm>(k: K, v: StrategyForm[K]) =>
+    setForm(p => p ? { ...p, [k]: v } : p);
+  const setParam = <K extends keyof StrategyParams>(k: K, v: StrategyParams[K]) =>
+    setForm(p => p ? { ...p, params: { ...p.params, [k]: v } } : p);
 
   const submit = async () => {
     setLoading(true);
     try {
       await api.put(`/strategies/${id}`, form);
       router.push('/strategies');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (e: any) {
-      setMsg('❌ ' + (e.response?.data?.error?.message ?? '저장 실패'));
+    } catch (error: unknown) {
+      setMsg('❌ ' + getApiErrorMessage(error, '저장 실패'));
     } finally { setLoading(false); }
   };
 
@@ -60,7 +80,6 @@ export default function EditStrategyPage() {
           <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#F9FAFB' }}>전략 수정</h2>
         </div>
 
-        {/* 기본 정보 */}
         <div style={sec}>
           <h3 style={{ color: '#D1D5DB', marginBottom: '16px', fontSize: '15px' }}>기본 정보</h3>
           <div style={{ marginBottom: '12px' }}>
@@ -78,7 +97,6 @@ export default function EditStrategyPage() {
           </div>
         </div>
 
-        {/* 매매 설정 */}
         <div style={sec}>
           <h3 style={{ color: '#D1D5DB', marginBottom: '16px', fontSize: '15px' }}>매매 설정</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -107,7 +125,6 @@ export default function EditStrategyPage() {
           </div>
         </div>
 
-        {/* 리스크 제한 */}
         <div style={sec}>
           <h3 style={{ color: '#D1D5DB', marginBottom: '16px', fontSize: '15px' }}>리스크 제한</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -118,7 +135,6 @@ export default function EditStrategyPage() {
           </div>
         </div>
 
-        {/* 진입 조건 */}
         <div style={{ ...sec, border: '1px solid #422006' }}>
           <h3 style={{ color: '#EAB308', marginBottom: '16px', fontSize: '15px' }}>진입 조건</h3>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
@@ -144,7 +160,6 @@ export default function EditStrategyPage() {
           <RuleBuilder title="숏 진입 조건" rules={params.shortEntryRules ?? []} showWeight={showWeight} onChange={r => setParam('shortEntryRules', r)} />
         </div>
 
-        {/* 청산/차단 */}
         <div style={{ ...sec, border: '1px solid #1E3A5F' }}>
           <h3 style={{ color: '#60A5FA', marginBottom: '16px', fontSize: '15px' }}>청산 / 차단 조건</h3>
           <RuleBuilder title="청산 조건" warnUnused rules={params.exitRules ?? []} showWeight={false} onChange={r => setParam('exitRules', r)} />

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
 import type { EvalMode, StrategyParams } from '@/lib/strategyRules';
 import { DEFAULT_PARAMS } from '@/lib/strategyRules';
 import { RuleBuilder } from '@/components/settings/RuleBuilder';
@@ -13,8 +14,8 @@ const sec: React.CSSProperties = { background: '#111827', border: '1px solid #1F
 export default function NewStrategyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [form, setForm] = useState({
+  const [msg, setMsg]         = useState('');
+  const [form, setForm]       = useState({
     name: '', type: 'RULE_BASED', symbol: 'BTCUSDT', timeframe: 'm15',
     positionSizeUsdt: 50, leverage: 5, marginType: 'ISOLATED',
     allowLong: true, allowShort: true,
@@ -23,10 +24,10 @@ export default function NewStrategyPage() {
     params: { ...DEFAULT_PARAMS } as StrategyParams,
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const setParam = (k: keyof StrategyParams, v: any) =>
+  // 제네릭 타입으로 any 제거
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
+    setForm(p => ({ ...p, [k]: v }));
+  const setParam = <K extends keyof StrategyParams>(k: K, v: StrategyParams[K]) =>
     setForm(p => ({ ...p, params: { ...p.params, [k]: v } }));
 
   const submit = async () => {
@@ -35,9 +36,8 @@ export default function NewStrategyPage() {
     try {
       await api.post('/strategies', form);
       router.push('/strategies');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (e: any) {
-      setMsg('❌ ' + (e.response?.data?.error?.message ?? '저장 실패'));
+    } catch (error: unknown) {
+      setMsg('❌ ' + getApiErrorMessage(error, '저장 실패'));
     } finally { setLoading(false); }
   };
 
@@ -53,7 +53,6 @@ export default function NewStrategyPage() {
           <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#F9FAFB' }}>전략 추가</h2>
         </div>
 
-        {/* 기본 정보 */}
         <div style={sec}>
           <h3 style={{ color: '#D1D5DB', marginBottom: '16px', fontSize: '15px' }}>기본 정보</h3>
           <div style={{ marginBottom: '12px' }}>
@@ -71,7 +70,6 @@ export default function NewStrategyPage() {
           </div>
         </div>
 
-        {/* 매매 설정 */}
         <div style={sec}>
           <h3 style={{ color: '#D1D5DB', marginBottom: '16px', fontSize: '15px' }}>매매 설정</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -93,14 +91,13 @@ export default function NewStrategyPage() {
             <div style={{ display: 'flex', gap: '16px', padding: '10px 0' }}>
               {([['allowLong','롱'],['allowShort','숏']] as const).map(([k,l]) => (
                 <label key={k} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#D1D5DB' }}>
-                  <input type="checkbox" checked={(form[k as keyof typeof form] as boolean)} onChange={e => set(k, e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#EAB308' }} />{l}
+                  <input type="checkbox" checked={form[k]} onChange={e => set(k, e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#EAB308' }} />{l}
                 </label>
               ))}
             </div>
           </div>
         </div>
 
-        {/* 리스크 제한 */}
         <div style={sec}>
           <h3 style={{ color: '#D1D5DB', marginBottom: '16px', fontSize: '15px' }}>리스크 제한</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -111,7 +108,6 @@ export default function NewStrategyPage() {
           </div>
         </div>
 
-        {/* 진입 조건 */}
         <div style={{ ...sec, border: '1px solid #422006' }}>
           <h3 style={{ color: '#EAB308', marginBottom: '16px', fontSize: '15px' }}>진입 조건</h3>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
@@ -137,7 +133,6 @@ export default function NewStrategyPage() {
           <RuleBuilder title="숏 진입 조건" rules={form.params.shortEntryRules} showWeight={showWeight} onChange={r => setParam('shortEntryRules', r)} />
         </div>
 
-        {/* 청산/차단 */}
         <div style={{ ...sec, border: '1px solid #1E3A5F' }}>
           <h3 style={{ color: '#60A5FA', marginBottom: '16px', fontSize: '15px' }}>청산 / 차단 조건</h3>
           <RuleBuilder title="청산 조건" rules={form.params.exitRules} warnUnused showWeight={false} onChange={r => setParam('exitRules', r)} />
