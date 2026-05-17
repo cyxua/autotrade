@@ -249,6 +249,39 @@ export class StrategyEngineService {
       if ((params.exitRules ?? []).length > 0)
         this.logger.warn(`[${strategy.symbol}] exitRules 설정됨 — 현재 엔진에서 미평가`);
 
+      // ── TEST_FORCE_ENTRY_ONCE 모드 감지 ─────────────────────────
+      const allRules = [
+        ...(params.longEntryRules ?? []),
+        ...(params.shortEntryRules ?? []),
+      ];
+      const isTestEntry = allRules.some(r => r.type === 'TEST_FORCE_ENTRY_ONCE');
+      const testEntryUsed = !!(params as any).testEntryUsed;
+
+      if (isTestEntry && testEntryUsed) {
+        this.logger.log(`[${strategy.symbol}] 테스트 진입 이미 완료 — 전략 자동 비활성화`);
+        await this.prisma.strategy.update({ where: { id: strategy.id }, data: { enabled: false } });
+        return;
+      }
+
+      if (isTestEntry && !testEntryUsed) {
+        // Trading Health Check: 최근 1시간 내 치명 리스크 로그 확인
+        const oneHourAgo = new Date(Date.now() - 3600_000);
+        const criticalLog = await this.prisma.riskBlockLog.findFirst({
+          where: {
+            userId,
+            reason:    { in: ['ENTRY_ORDER_UNPROTECTED','SL_ORDER_FAILED','ENTRY_ORDER_STATUS_UNKNOWN','POSITION_STILL_OPEN','CLOSE_VERIFY_FAILED'] },
+            createdAt: { gte: oneHourAgo },
+          },
+        });
+        if (criticalLog) {
+          await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED',
+            { reason: 'hasCriticalRiskBlock', criticalReason: criticalLog.reason, at: criticalLog.createdAt });
+          this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — 치명 리스크 로그: ${criticalLog.reason}`);
+          return;
+        }
+        this.logger.log(`[${strategy.symbol}] TEST_FORCE_ENTRY_ONCE — 진입 시도`);
+      }
+
       const tfMap: Record<string, string> = { m1:'1m', m5:'5m', m15:'15m', h1:'1h', h4:'4h' };
       let klines: Kline[] = await this.binance.getKlines(strategy.symbol, tfMap[strategy.timeframe] ?? '15m', 250);
 
@@ -294,6 +327,19 @@ export class StrategyEngineService {
         const guard = await this.riskGuard(userId, strategy);
         if (!guard.ok) continue;
         await this.enterPosition(userId, strategy, dir, klines);
+
+        // TEST_FORCE_ENTRY_ONCE: 진입 시도 후 전략 자동 비활성화
+        if (isTestEntry) {
+          await this.prisma.strategy.update({
+            where: { id: strategy.id },
+            data: {
+              enabled: false,
+              params: { ...(params as object), testEntryUsed: true } as any,
+            },
+          }).catch(e => this.logger.warn(`테스트 전략 비활성화 실패: ${e.message}`));
+          this.logger.log(`[${strategy.symbol}] 테스트 진입 완료 — 전략 자동 비활성화 (testEntryUsed=true)`);
+          break;  // 1회만 진입
+        }
       }
     } catch (e: any) {
       this.logger.error(`[${strategy.symbol}] processStrategy 오류: ${e.message}`);

@@ -1,5 +1,5 @@
 import { IndicatorService, Kline } from './indicator.service';
-export type RuleType = 'EMA_CROSS' | 'SMA_CROSS' | 'RSI_RANGE' | 'BOLLINGER_BREAKOUT' | 'HIGH_LOW_BREAKOUT' | 'VOLUME_SPIKE' | 'TRADE_COUNT_SURGE' | 'ATR_RANGE' | 'PRICE_ABOVE_MA' | 'PRICE_BELOW_MA';
+export type RuleType = 'EMA_CROSS' | 'SMA_CROSS' | 'RSI_RANGE' | 'BOLLINGER_BREAKOUT' | 'HIGH_LOW_BREAKOUT' | 'VOLUME_SPIKE' | 'TRADE_COUNT_SURGE' | 'ATR_RANGE' | 'PRICE_ABOVE_MA' | 'PRICE_BELOW_MA' | 'TEST_FORCE_ENTRY_ONCE';
 export type EvalMode = 'ALL' | 'ANY' | 'SCORE';
 export interface StrategyRule {
     id: string;

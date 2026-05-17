@@ -11,7 +11,8 @@ export type RuleType =
   | 'TRADE_COUNT_SURGE'
   | 'ATR_RANGE'
   | 'PRICE_ABOVE_MA'
-  | 'PRICE_BELOW_MA';
+  | 'PRICE_BELOW_MA'
+  | 'TEST_FORCE_ENTRY_ONCE';
 
 export interface ParamMeta {
   label: string;
@@ -96,6 +97,10 @@ export const RULE_SCHEMA: Record<RuleType, RuleSchema> = {
       maType: { label: 'MA 종류', type: 'select', default: 'EMA',
         options: [{ value: 'EMA', label: 'EMA' }, { value: 'SMA', label: 'SMA' }] },
     },
+  },
+  TEST_FORCE_ENTRY_ONCE: {
+    label: '🧪 테스트 전용: 1회 강제 진입',
+    params: {},   // 파라미터 없음
   },
   PRICE_BELOW_MA: {
     label: '가격 < MA',

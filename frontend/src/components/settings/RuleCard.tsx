@@ -13,6 +13,28 @@ interface Props {
 export function RuleCard({ rule, showWeight, onChange, onDelete }: Props) {
   const schema = RULE_SCHEMA[rule.type];
 
+  // TEST_FORCE_ENTRY_ONCE 전용 카드 (파라미터 없음)
+  if (rule.type === 'TEST_FORCE_ENTRY_ONCE') {
+    return (
+      <div style={{ background: '#1C1A00', border: '1px solid #EAB308', borderRadius: '10px', padding: '14px', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#EAB308' }}>🧪 테스트 전용: 1회 강제 진입</span>
+          </div>
+          <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '18px' }}>×</button>
+        </div>
+        <p style={{ fontSize: '11px', color: '#A3A300', marginTop: '8px', lineHeight: 1.5 }}>
+          다음 엔진 스캔에서 1회 진입을 시도합니다.<br/>
+          riskGuard(잔고·포지션·minNotional 등) 및 치명 리스크 로그 검사를 반드시 통과해야 합니다.<br/>
+          진입 성공 후 전략이 자동으로 비활성화됩니다.
+        </p>
+        <p style={{ fontSize: '10px', color: '#6B7280', marginTop: '6px' }}>
+          ※ 롱 진입 조건에 추가하면 LONG, 숏 진입 조건에 추가하면 SHORT로 진입합니다.
+        </p>
+      </div>
+    );
+  }
+
   const changeType = (type: RuleType) => {
     const next = makeDefaultRule(type);
     onChange({ ...next, id: rule.id, weight: rule.weight, enabled: rule.enabled });

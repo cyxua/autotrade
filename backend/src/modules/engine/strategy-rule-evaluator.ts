@@ -12,7 +12,8 @@ export type RuleType =
   | 'TRADE_COUNT_SURGE'
   | 'ATR_RANGE'
   | 'PRICE_ABOVE_MA'
-  | 'PRICE_BELOW_MA';
+  | 'PRICE_BELOW_MA'
+  | 'TEST_FORCE_ENTRY_ONCE';  // 테스트 전용 — 1회 강제 진입
 
 export type EvalMode = 'ALL' | 'ANY' | 'SCORE';
 
@@ -51,10 +52,12 @@ export const RULE_PARAMS_SCHEMA: Record<RuleType, Record<string, {
   ATR_RANGE:          { period:     { type: 'number', default: 14,   min: 2, max: 200 }, minValue:   { type: 'number', default: 0,    min: 0,   max: 99999}, maxValue:    { type: 'number', default: 9999, min: 0, max: 99999  } },
   PRICE_ABOVE_MA:     { period:     { type: 'number', default: 200,  min: 1, max: 500 }, maType:     { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
   PRICE_BELOW_MA:     { period:     { type: 'number', default: 200,  min: 1, max: 500 }, maType:     { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
+  TEST_FORCE_ENTRY_ONCE: {},  // 파라미터 없음 — 1회 강제 진입 테스트 전용
 };
 
 // ── validateRule: select 필드도 검증 ─────────────────────────────────
 export function validateRule(rule: StrategyRule): string | null {
+  if (rule.type === 'TEST_FORCE_ENTRY_ONCE') return null;  // 파라미터 없음
   const schema = RULE_PARAMS_SCHEMA[rule.type];
   if (!schema) return `알 수 없는 rule type: ${rule.type}`;
 
@@ -210,6 +213,10 @@ export class StrategyRuleEvaluator {
           : this.indicator.calcEMA(closes, p.period);
         return { value: parseFloat((ma - last).toFixed(6)), passed: last < ma };
       }
+
+      case 'TEST_FORCE_ENTRY_ONCE':
+        // 항상 true — processStrategy에서 1회 제한 처리
+        return { value: 1, passed: true };
 
       default:
         return { value: 0, passed: false };

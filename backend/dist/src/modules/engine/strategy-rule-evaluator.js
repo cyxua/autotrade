@@ -25,8 +25,11 @@ exports.RULE_PARAMS_SCHEMA = {
     ATR_RANGE: { period: { type: 'number', default: 14, min: 2, max: 200 }, minValue: { type: 'number', default: 0, min: 0, max: 99999 }, maxValue: { type: 'number', default: 9999, min: 0, max: 99999 } },
     PRICE_ABOVE_MA: { period: { type: 'number', default: 200, min: 1, max: 500 }, maType: { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
     PRICE_BELOW_MA: { period: { type: 'number', default: 200, min: 1, max: 500 }, maType: { type: 'select', default: 'EMA', options: ['EMA', 'SMA'] } },
+    TEST_FORCE_ENTRY_ONCE: {},
 };
 function validateRule(rule) {
+    if (rule.type === 'TEST_FORCE_ENTRY_ONCE')
+        return null;
     const schema = exports.RULE_PARAMS_SCHEMA[rule.type];
     if (!schema)
         return `알 수 없는 rule type: ${rule.type}`;
@@ -167,6 +170,8 @@ let StrategyRuleEvaluator = StrategyRuleEvaluator_1 = class StrategyRuleEvaluato
                     : this.indicator.calcEMA(closes, p.period);
                 return { value: parseFloat((ma - last).toFixed(6)), passed: last < ma };
             }
+            case 'TEST_FORCE_ENTRY_ONCE':
+                return { value: 1, passed: true };
             default:
                 return { value: 0, passed: false };
         }
