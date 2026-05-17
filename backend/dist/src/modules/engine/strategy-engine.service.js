@@ -383,16 +383,34 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                         triggerPrice: tp,
                         closePosition: 'true',
                         workingType: 'MARK_PRICE',
-                        priceProtect: 'FALSE',
                     });
-                    const algoId = tpRes.algoId ? String(tpRes.algoId) : (tpRes.clientAlgoId ?? null);
+                    const rawAlgoId = tpRes.algoId ? String(tpRes.algoId) : null;
+                    const rawClientId = tpRes.clientAlgoId ?? null;
+                    const binOrderId = rawAlgoId ? `${symbol}:${rawAlgoId}` :
+                        rawClientId ? `${symbol}:${rawClientId}` : null;
+                    let confirmedStatus = tpRes.algoStatus ?? 'UNKNOWN';
+                    const numericAlgoId = tpRes.algoId ? Number(tpRes.algoId) : undefined;
+                    if (numericAlgoId || rawClientId) {
+                        try {
+                            await sleep(300);
+                            const verified = await this.binance.getAlgoOrder(numericAlgoId, rawClientId ?? undefined);
+                            confirmedStatus = verified.algoStatus ?? confirmedStatus;
+                        }
+                        catch (ve) {
+                            this.logger.warn(`[${symbol}] TP Algo 재조회 실패: ${ve.message}`);
+                        }
+                    }
+                    const validStatuses = ['NEW', 'ACCEPTED', 'WORKING'];
+                    if (!validStatuses.includes(confirmedStatus)) {
+                        throw new Error(`TP algoStatus 비정상: ${confirmedStatus}`);
+                    }
                     await this.prisma.order.create({
                         data: {
                             userId, strategyId: strategy.id ?? null,
-                            binanceOrderId: algoId,
+                            binanceOrderId: binOrderId,
                             symbol, side: closeSide, positionSide: 'BOTH',
                             orderType: 'TAKE_PROFIT_MARKET',
-                            status: (tpRes.algoStatus ?? 'NEW'),
+                            status: 'NEW',
                             quantity: parseFloat(qty),
                             stopPrice: parseFloat(tp),
                             leverage: strategy.leverage,
@@ -400,7 +418,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                             exitReason: 'TAKE_PROFIT',
                         },
                     }).catch(() => { });
-                    this.logger.log(`[${symbol}] TP Algo: ${tp} (algoId: ${algoId})`);
+                    this.logger.log(`[${symbol}] TP Algo: ${tp} (algoId: ${rawAlgoId}, status: ${confirmedStatus})`);
                     tpOk = true;
                 }
                 catch (e) {
@@ -419,16 +437,34 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                         triggerPrice: sl,
                         closePosition: 'true',
                         workingType: 'MARK_PRICE',
-                        priceProtect: 'FALSE',
                     });
-                    const algoId = slRes.algoId ? String(slRes.algoId) : (slRes.clientAlgoId ?? null);
+                    const rawAlgoId = slRes.algoId ? String(slRes.algoId) : null;
+                    const rawClientId = slRes.clientAlgoId ?? null;
+                    const binOrderId = rawAlgoId ? `${symbol}:${rawAlgoId}` :
+                        rawClientId ? `${symbol}:${rawClientId}` : null;
+                    let confirmedStatus = slRes.algoStatus ?? 'UNKNOWN';
+                    const numericAlgoId = slRes.algoId ? Number(slRes.algoId) : undefined;
+                    if (numericAlgoId || rawClientId) {
+                        try {
+                            await sleep(300);
+                            const verified = await this.binance.getAlgoOrder(numericAlgoId, rawClientId ?? undefined);
+                            confirmedStatus = verified.algoStatus ?? confirmedStatus;
+                        }
+                        catch (ve) {
+                            this.logger.warn(`[${symbol}] SL Algo 재조회 실패: ${ve.message}`);
+                        }
+                    }
+                    const validStatuses = ['NEW', 'ACCEPTED', 'WORKING'];
+                    if (!validStatuses.includes(confirmedStatus)) {
+                        throw new Error(`SL algoStatus 비정상: ${confirmedStatus}`);
+                    }
                     await this.prisma.order.create({
                         data: {
                             userId, strategyId: strategy.id ?? null,
-                            binanceOrderId: algoId,
+                            binanceOrderId: binOrderId,
                             symbol, side: closeSide, positionSide: 'BOTH',
                             orderType: 'STOP_MARKET',
-                            status: (slRes.algoStatus ?? 'NEW'),
+                            status: 'NEW',
                             quantity: parseFloat(qty),
                             stopPrice: parseFloat(sl),
                             leverage: strategy.leverage,
@@ -436,7 +472,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                             exitReason: 'STOP_LOSS',
                         },
                     }).catch(() => { });
-                    this.logger.log(`[${symbol}] SL Algo: ${sl} (algoId: ${algoId})`);
+                    this.logger.log(`[${symbol}] SL Algo: ${sl} (algoId: ${rawAlgoId}, status: ${confirmedStatus})`);
                     slOk = true;
                 }
                 catch (e) {

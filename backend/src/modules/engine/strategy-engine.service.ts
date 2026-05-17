@@ -401,7 +401,6 @@ export class StrategyEngineService {
       let slOk        = strategy.stopLossPct  <= 0;
 
       // TP 주문 — Algo Order API (POST /fapi/v1/algoOrder)
-      // closePosition=true 시 quantity, reduceOnly 제거 필수
       if (strategy.takeProfitPct > 0) {
         const tp = formatPrice(fillPrice * (1 + pDir * strategy.takeProfitPct / 100), filters.tickSize);
         try {
@@ -411,19 +410,42 @@ export class StrategyEngineService {
             side:          closeSide,
             positionSide:  'BOTH',
             type:          'TAKE_PROFIT_MARKET',
-            triggerPrice:  tp,          // stopPrice → triggerPrice
-            closePosition: 'true',      // 전체 포지션 종료
-            workingType:   'MARK_PRICE', // 마크가 기준 트리거
-            priceProtect:  'FALSE',
+            triggerPrice:  tp,
+            closePosition: 'true',
+            workingType:   'MARK_PRICE',
           });
-          const algoId = tpRes.algoId ? String(tpRes.algoId) : (tpRes.clientAlgoId ?? null);
+
+          // algoId 기반 binanceOrderId (symbol prefix로 고유성 보장)
+          const rawAlgoId    = tpRes.algoId ? String(tpRes.algoId) : null;
+          const rawClientId  = tpRes.clientAlgoId ?? null;
+          const binOrderId   = rawAlgoId   ? `${symbol}:${rawAlgoId}`  :
+                               rawClientId ? `${symbol}:${rawClientId}` : null;
+
+          // 1회 재조회로 algoStatus 확인
+          let confirmedStatus = tpRes.algoStatus ?? 'UNKNOWN';
+          const numericAlgoId = tpRes.algoId ? Number(tpRes.algoId) : undefined;
+          if (numericAlgoId || rawClientId) {
+            try {
+              await sleep(300);
+              const verified = await this.binance.getAlgoOrder(numericAlgoId, rawClientId ?? undefined);
+              confirmedStatus = verified.algoStatus ?? confirmedStatus;
+            } catch (ve: any) {
+              this.logger.warn(`[${symbol}] TP Algo 재조회 실패: ${ve.message}`);
+            }
+          }
+
+          const validStatuses = ['NEW', 'ACCEPTED', 'WORKING'];
+          if (!validStatuses.includes(confirmedStatus)) {
+            throw new Error(`TP algoStatus 비정상: ${confirmedStatus}`);
+          }
+
           await this.prisma.order.create({
             data: {
               userId, strategyId: strategy.id ?? null,
-              binanceOrderId: algoId,
+              binanceOrderId: binOrderId,
               symbol, side: closeSide as any, positionSide: 'BOTH' as any,
               orderType: 'TAKE_PROFIT_MARKET' as any,
-              status:    (tpRes.algoStatus ?? 'NEW') as any,
+              status:    'NEW' as any,
               quantity:  parseFloat(qty),
               stopPrice: parseFloat(tp),
               leverage:  strategy.leverage,
@@ -431,7 +453,7 @@ export class StrategyEngineService {
               exitReason: 'TAKE_PROFIT',
             },
           }).catch(() => {});
-          this.logger.log(`[${symbol}] TP Algo: ${tp} (algoId: ${algoId})`);
+          this.logger.log(`[${symbol}] TP Algo: ${tp} (algoId: ${rawAlgoId}, status: ${confirmedStatus})`);
           tpOk = true;
         } catch (e: any) {
           await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'TP_ORDER_FAILED',
@@ -440,7 +462,7 @@ export class StrategyEngineService {
       }
 
       // SL 주문 — Algo Order API (POST /fapi/v1/algoOrder)
-      // closePosition=true 시 quantity, reduceOnly 제거 필수
+      // SL 실패 시 엔진 STOPPED 유지 (핵심 보호)
       if (strategy.stopLossPct > 0) {
         const sl = formatPrice(fillPrice * (1 - pDir * strategy.stopLossPct / 100), filters.tickSize);
         try {
@@ -450,19 +472,43 @@ export class StrategyEngineService {
             side:          closeSide,
             positionSide:  'BOTH',
             type:          'STOP_MARKET',
-            triggerPrice:  sl,           // stopPrice → triggerPrice
-            closePosition: 'true',       // 전체 포지션 종료
-            workingType:   'MARK_PRICE', // 마크가 기준 트리거
-            priceProtect:  'FALSE',
+            triggerPrice:  sl,
+            closePosition: 'true',
+            workingType:   'MARK_PRICE',
           });
-          const algoId = slRes.algoId ? String(slRes.algoId) : (slRes.clientAlgoId ?? null);
+
+          // algoId 기반 binanceOrderId (symbol prefix로 고유성 보장)
+          const rawAlgoId    = slRes.algoId ? String(slRes.algoId) : null;
+          const rawClientId  = slRes.clientAlgoId ?? null;
+          const binOrderId   = rawAlgoId   ? `${symbol}:${rawAlgoId}`  :
+                               rawClientId ? `${symbol}:${rawClientId}` : null;
+
+          // 1회 재조회로 algoStatus 확인 (SL은 실패 시 엔진 중지)
+          let confirmedStatus = slRes.algoStatus ?? 'UNKNOWN';
+          const numericAlgoId = slRes.algoId ? Number(slRes.algoId) : undefined;
+          if (numericAlgoId || rawClientId) {
+            try {
+              await sleep(300);
+              const verified = await this.binance.getAlgoOrder(numericAlgoId, rawClientId ?? undefined);
+              confirmedStatus = verified.algoStatus ?? confirmedStatus;
+            } catch (ve: any) {
+              this.logger.warn(`[${symbol}] SL Algo 재조회 실패: ${ve.message}`);
+              // 재조회 실패 자체는 SL 무효화하지 않음 (placeAlgoOrder 성공했으므로)
+            }
+          }
+
+          const validStatuses = ['NEW', 'ACCEPTED', 'WORKING'];
+          if (!validStatuses.includes(confirmedStatus)) {
+            throw new Error(`SL algoStatus 비정상: ${confirmedStatus}`);
+          }
+
           await this.prisma.order.create({
             data: {
               userId, strategyId: strategy.id ?? null,
-              binanceOrderId: algoId,
+              binanceOrderId: binOrderId,
               symbol, side: closeSide as any, positionSide: 'BOTH' as any,
               orderType: 'STOP_MARKET' as any,
-              status:    (slRes.algoStatus ?? 'NEW') as any,
+              status:    'NEW' as any,
               quantity:  parseFloat(qty),
               stopPrice: parseFloat(sl),
               leverage:  strategy.leverage,
@@ -470,10 +516,11 @@ export class StrategyEngineService {
               exitReason: 'STOP_LOSS',
             },
           }).catch(() => {});
-          this.logger.log(`[${symbol}] SL Algo: ${sl} (algoId: ${algoId})`);
+          this.logger.log(`[${symbol}] SL Algo: ${sl} (algoId: ${rawAlgoId}, status: ${confirmedStatus})`);
           slOk = true;
         } catch (e: any) {
           this.logger.error(`[${symbol}] SL Algo 실패: ${e.message}`);
+          // slOk = false 유지 → 하단에서 ENTRY_ORDER_UNPROTECTED + 엔진 중지
         }
       }
 

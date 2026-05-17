@@ -59,6 +59,7 @@ export class EngineService {
 
     // ── 항목 5: positionSymbols 조회 실패 명시적 기록 ────────────
     let cancelResult = { canceled: [] as string[], cancelErrors: [] as { symbol: string; error: string }[] };
+    let canceledAlgoOrders = 0;
     try {
       let positionSymbols: string[] = [];
       try {
@@ -75,6 +76,23 @@ export class EngineService {
       const result = await this.binance.cancelAllOrdersStrict(allSymbols);
       cancelResult.canceled      = result.canceled;
       cancelResult.cancelErrors  = [...cancelResult.cancelErrors, ...result.cancelErrors];
+
+      // Algo 조건부 주문 취소 (TP/SL Algo Order)
+      canceledAlgoOrders = 0;
+      for (const sym of allSymbols) {
+        try {
+          await this.binance.cancelAllAlgoOrders(sym);
+          canceledAlgoOrders++;
+          this.logger.log(`[${sym}] Algo 주문 취소 완료`);
+        } catch (e: any) {
+          const algoErr = e.message ?? 'ALGO_CANCEL_FAILED';
+          // Algo 주문이 없으면 에러가 날 수 있으므로 warn 수준
+          this.logger.warn(`[${sym}] Algo 주문 취소 스킵: ${algoErr}`);
+          if (!algoErr.includes('No algo order') && !algoErr.includes('-2011')) {
+            cancelResult.cancelErrors.push({ symbol: sym, error: `ALGO: ${algoErr}` });
+          }
+        }
+      }
     } catch (e: any) {
       cancelResult.cancelErrors.push({ symbol: '_CANCEL_ALL_', error: e.message });
       this.logger.error('주문 전체 취소 실패', e.message);
@@ -137,8 +155,9 @@ export class EngineService {
 
     return {
       status: 'EMERGENCY_STOPPED',
-      canceledOrders: cancelResult.canceled.length,
-      cancelErrors:   cancelResult.cancelErrors,
+      canceledOrders:     cancelResult.canceled.length,
+      canceledAlgoOrders: canceledAlgoOrders,
+      cancelErrors:       cancelResult.cancelErrors,
       closedPositions,
       closeErrors,
       positionFetchError,

@@ -35,6 +35,7 @@ export declare class EngineService {
     emergencyStop(userId: string, closePositions?: boolean): Promise<{
         status: string;
         canceledOrders: number;
+        canceledAlgoOrders: number;
         cancelErrors: {
             symbol: string;
             error: string;

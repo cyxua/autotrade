@@ -211,10 +211,11 @@ export class BinanceService {
   }
 
   // DELETE /fapi/v1/algoOrder
-  async cancelAlgoOrder(symbol: string, algoId?: number, clientAlgoId?: string): Promise<any> {
-    const params: Record<string, string | number> = { symbol };
+  async cancelAlgoOrder(algoId?: number, clientAlgoId?: string): Promise<any> {
+    const params: Record<string, string | number> = {};
     if (algoId)       params.algoId       = algoId;
     if (clientAlgoId) params.clientAlgoId = clientAlgoId;
+    if (!algoId && !clientAlgoId) throw new Error('algoId 또는 clientAlgoId 중 하나는 필수');
     return this.signedRequest('DELETE', '/fapi/v1/algoOrder', params);
   }
 
@@ -224,10 +225,11 @@ export class BinanceService {
   }
 
   // GET /fapi/v1/algoOrder
-  async getAlgoOrder(symbol: string, algoId?: number, clientAlgoId?: string): Promise<any> {
-    const params: Record<string, string | number> = { symbol };
+  async getAlgoOrder(algoId?: number, clientAlgoId?: string): Promise<any> {
+    const params: Record<string, string | number> = {};
     if (algoId)       params.algoId       = algoId;
     if (clientAlgoId) params.clientAlgoId = clientAlgoId;
+    if (!algoId && !clientAlgoId) throw new Error('algoId 또는 clientAlgoId 중 하나는 필수');
     return this.signedRequest('GET', '/fapi/v1/algoOrder', params);
   }
 

@@ -250,23 +250,27 @@ let BinanceService = BinanceService_1 = class BinanceService {
     async placeAlgoOrder(params) {
         return this.signedRequest('POST', '/fapi/v1/algoOrder', params);
     }
-    async cancelAlgoOrder(symbol, algoId, clientAlgoId) {
-        const params = { symbol };
+    async cancelAlgoOrder(algoId, clientAlgoId) {
+        const params = {};
         if (algoId)
             params.algoId = algoId;
         if (clientAlgoId)
             params.clientAlgoId = clientAlgoId;
+        if (!algoId && !clientAlgoId)
+            throw new Error('algoId 또는 clientAlgoId 중 하나는 필수');
         return this.signedRequest('DELETE', '/fapi/v1/algoOrder', params);
     }
     async cancelAllAlgoOrders(symbol) {
         return this.signedRequest('DELETE', '/fapi/v1/algoOpenOrders', { symbol });
     }
-    async getAlgoOrder(symbol, algoId, clientAlgoId) {
-        const params = { symbol };
+    async getAlgoOrder(algoId, clientAlgoId) {
+        const params = {};
         if (algoId)
             params.algoId = algoId;
         if (clientAlgoId)
             params.clientAlgoId = clientAlgoId;
+        if (!algoId && !clientAlgoId)
+            throw new Error('algoId 또는 clientAlgoId 중 하나는 필수');
         return this.signedRequest('GET', '/fapi/v1/algoOrder', params);
     }
     async getTickerPrice(symbol) {

@@ -41,6 +41,7 @@ export declare class EngineController {
         data: {
             status: string;
             canceledOrders: number;
+            canceledAlgoOrders: number;
             cancelErrors: {
                 symbol: string;
                 error: string;

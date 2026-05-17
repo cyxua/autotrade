@@ -66,6 +66,7 @@ let EngineService = EngineService_1 = class EngineService {
         });
         const strategySymbols = [...new Set(strategies.map(s => s.symbol))];
         let cancelResult = { canceled: [], cancelErrors: [] };
+        let canceledAlgoOrders = 0;
         try {
             let positionSymbols = [];
             try {
@@ -82,6 +83,21 @@ let EngineService = EngineService_1 = class EngineService {
             const result = await this.binance.cancelAllOrdersStrict(allSymbols);
             cancelResult.canceled = result.canceled;
             cancelResult.cancelErrors = [...cancelResult.cancelErrors, ...result.cancelErrors];
+            canceledAlgoOrders = 0;
+            for (const sym of allSymbols) {
+                try {
+                    await this.binance.cancelAllAlgoOrders(sym);
+                    canceledAlgoOrders++;
+                    this.logger.log(`[${sym}] Algo 주문 취소 완료`);
+                }
+                catch (e) {
+                    const algoErr = e.message ?? 'ALGO_CANCEL_FAILED';
+                    this.logger.warn(`[${sym}] Algo 주문 취소 스킵: ${algoErr}`);
+                    if (!algoErr.includes('No algo order') && !algoErr.includes('-2011')) {
+                        cancelResult.cancelErrors.push({ symbol: sym, error: `ALGO: ${algoErr}` });
+                    }
+                }
+            }
         }
         catch (e) {
             cancelResult.cancelErrors.push({ symbol: '_CANCEL_ALL_', error: e.message });
@@ -143,6 +159,7 @@ let EngineService = EngineService_1 = class EngineService {
         return {
             status: 'EMERGENCY_STOPPED',
             canceledOrders: cancelResult.canceled.length,
+            canceledAlgoOrders: canceledAlgoOrders,
             cancelErrors: cancelResult.cancelErrors,
             closedPositions,
             closeErrors,
