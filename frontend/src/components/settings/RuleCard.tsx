@@ -4,13 +4,14 @@ import { RULE_SCHEMA, StrategyRule, RuleType, makeDefaultRule } from '@/lib/stra
 const inp: React.CSSProperties = { width: '100%', background: '#1F2937', border: '1px solid #374151', borderRadius: '6px', padding: '8px 10px', color: '#F9FAFB', fontSize: '13px', outline: 'none', boxSizing: 'border-box' };
 
 interface Props {
-  rule: StrategyRule;
-  showWeight: boolean;
-  onChange: (r: StrategyRule) => void;
-  onDelete: () => void;
+  rule:              StrategyRule;
+  showWeight:        boolean;
+  excludeRuleTypes?: RuleType[];
+  onChange:          (r: StrategyRule) => void;
+  onDelete:          () => void;
 }
 
-export function RuleCard({ rule, showWeight, onChange, onDelete }: Props) {
+export function RuleCard({ rule, showWeight, excludeRuleTypes, onChange, onDelete }: Props) {
   const schema = RULE_SCHEMA[rule.type];
 
   // TEST_FORCE_ENTRY_ONCE 전용 카드 (파라미터 없음)
@@ -24,12 +25,13 @@ export function RuleCard({ rule, showWeight, onChange, onDelete }: Props) {
           <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '18px' }}>×</button>
         </div>
         <p style={{ fontSize: '11px', color: '#A3A300', marginTop: '8px', lineHeight: 1.5 }}>
+          ⚠️ 실제 수익 전략이 아닙니다. 주문 / TP/SL / 긴급 정지 동작 검증 전용입니다.<br/>
           다음 엔진 스캔에서 1회 진입을 시도합니다.<br/>
-          riskGuard(잔고·포지션·minNotional 등) 및 치명 리스크 로그 검사를 반드시 통과해야 합니다.<br/>
-          진입 성공 후 전략이 자동으로 비활성화됩니다.
+          riskGuard · Trading Health Check (치명 로그, Algo 주문) 통과 필수.<br/>
+          진입 성공 시에만 전략 자동 비활성화 (testEntryUsed=true).
         </p>
         <p style={{ fontSize: '10px', color: '#6B7280', marginTop: '6px' }}>
-          ※ 롱 진입 조건에 추가하면 LONG, 숏 진입 조건에 추가하면 SHORT로 진입합니다.
+          ※ 롱 진입 조건 → LONG, 숏 진입 조건 → SHORT 진입. 차단/exitRules에서는 사용 불가.
         </p>
       </div>
     );
@@ -48,9 +50,12 @@ export function RuleCard({ rule, showWeight, onChange, onDelete }: Props) {
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
         <select style={{ ...inp, flex: 2, cursor: 'pointer' }} value={rule.type}
           onChange={e => changeType(e.target.value as RuleType)}>
-          {(Object.keys(RULE_SCHEMA) as RuleType[]).map(k => (
-            <option key={k} value={k}>{RULE_SCHEMA[k].label}</option>
-          ))}
+          {(Object.keys(RULE_SCHEMA) as RuleType[])
+            .filter(k => !(excludeRuleTypes ?? []).includes(k))
+            .map(k => (
+              <option key={k} value={k}>{RULE_SCHEMA[k].label}</option>
+            ))
+          }
         </select>
         {showWeight && (
           <input style={{ ...inp, width: '64px' }} type="number" min={1} max={10}

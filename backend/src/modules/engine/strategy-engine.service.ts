@@ -7,6 +7,12 @@ function formatPrice(price: number, tickSize: number): string {
   return (Math.floor(price / tickSize) * tickSize).toFixed(precision);
 }
 function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
+
+interface EnterPositionResult {
+  entered:   boolean;
+  protected: boolean;
+  reason?:   string;
+}
 function toOrderId(id: any): string | null { return id != null ? String(id) : null; }
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -279,7 +285,31 @@ export class StrategyEngineService {
           this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — 치명 리스크 로그: ${criticalLog.reason}`);
           return;
         }
-        this.logger.log(`[${strategy.symbol}] TEST_FORCE_ENTRY_ONCE — 진입 시도`);
+        // Binance open algo orders 체크 (SL 없는 포지션 보호)
+        let openAlgoCount = 0;
+        let algoFetchErr: string | null = null;
+        try {
+          const algoOrders = await this.binance.getOpenAlgoOrders(strategy.symbol);
+          openAlgoCount = algoOrders.length;
+        } catch (e: any) {
+          algoFetchErr = e.message;
+        }
+
+        const healthDetail = {
+          hasCriticalRiskBlock: false,
+          hasOpenAlgoOrders:    openAlgoCount > 0,
+          algoOrderCount:       openAlgoCount,
+          algoFetchError:       algoFetchErr,
+        };
+
+        if (algoFetchErr) {
+          await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED',
+            { reason: 'ALGO_FETCH_FAILED', ...healthDetail });
+          this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — Algo 주문 조회 실패`);
+          return;
+        }
+
+        this.logger.log(`[${strategy.symbol}] TEST_FORCE_ENTRY_ONCE — 진입 시도 (algoOrders: ${openAlgoCount})`);
       }
 
       const tfMap: Record<string, string> = { m1:'1m', m5:'5m', m15:'15m', h1:'1h', h4:'4h' };
@@ -326,19 +356,25 @@ export class StrategyEngineService {
       for (const dir of directions) {
         const guard = await this.riskGuard(userId, strategy);
         if (!guard.ok) continue;
-        await this.enterPosition(userId, strategy, dir, klines);
+        const entryResult = await this.enterPosition(userId, strategy, dir, klines);
 
-        // TEST_FORCE_ENTRY_ONCE: 진입 시도 후 전략 자동 비활성화
+        // TEST_FORCE_ENTRY_ONCE: entered===true일 때만 비활성화
         if (isTestEntry) {
-          await this.prisma.strategy.update({
-            where: { id: strategy.id },
-            data: {
-              enabled: false,
-              params: { ...(params as object), testEntryUsed: true } as any,
-            },
-          }).catch(e => this.logger.warn(`테스트 전략 비활성화 실패: ${e.message}`));
-          this.logger.log(`[${strategy.symbol}] 테스트 진입 완료 — 전략 자동 비활성화 (testEntryUsed=true)`);
-          break;  // 1회만 진입
+          if (entryResult.entered) {
+            await this.prisma.strategy.update({
+              where: { id: strategy.id },
+              data: {
+                enabled: false,
+                params: { ...(params as object), testEntryUsed: true } as any,
+              },
+            }).catch(e => this.logger.warn(`테스트 전략 비활성화 실패: ${e.message}`));
+            this.logger.log(`[${strategy.symbol}] 테스트 진입 완료 — 전략 자동 비활성화 (protected: ${entryResult.protected})`);
+          } else {
+            await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_FAILED',
+              { reason: entryResult.reason ?? 'UNKNOWN', direction: dir });
+            this.logger.warn(`[${strategy.symbol}] 테스트 진입 실패 — testEntryUsed 변경 없음 (reason: ${entryResult.reason})`);
+          }
+          break;  // 1회만 시도
         }
       }
     } catch (e: any) {
@@ -346,7 +382,7 @@ export class StrategyEngineService {
     }
   }
 
-  private async enterPosition(userId: string, strategy: any, direction: 'LONG' | 'SHORT', _klines: Kline[]) {
+  private async enterPosition(userId: string, strategy: any, direction: 'LONG' | 'SHORT', _klines: Kline[]): Promise<EnterPositionResult> {
     const symbol = strategy.symbol;
     try {
       const filters = await this.binance.getSymbolFilters(symbol);
@@ -359,14 +395,14 @@ export class StrategyEngineService {
 
       if (parseFloat(qty) < filters.minQty) {
         this.logger.warn(`[${symbol}] 최소 수량 미달`);
-        return;
+        return { entered: false, protected: false, reason: 'MIN_QTY_NOT_MET' };
       }
       // snappedQty 기준 minNotional 재검사
       const actualNotional = parseFloat(qty) * price;
       if (actualNotional < filters.minNotional) {
         await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'MIN_NOTIONAL_AFTER_ROUNDING',
           { qty, price, actualNotional, minNotional: filters.minNotional });
-        return;
+        return { entered: false, protected: false, reason: 'MIN_NOTIONAL_AFTER_ROUNDING' };
       }
 
       const side     = direction === 'LONG' ? 'BUY' : 'SELL';
@@ -409,7 +445,7 @@ export class StrategyEngineService {
         } catch (e: any) {
           await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'ENTRY_ORDER_STATUS_UNKNOWN', { orderId, error: e.message });
           await this.haltEngine(userId, 'ENTRY_ORDER_STATUS_UNKNOWN');
-          return;
+          return { entered: false, protected: false, reason: 'ENTRY_ORDER_STATUS_UNKNOWN' };
         }
       }
 
@@ -574,10 +610,14 @@ export class StrategyEngineService {
         await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'ENTRY_ORDER_UNPROTECTED',
           { fillPrice, direction, tpOk });
         await this.haltEngine(userId, 'ENTRY_ORDER_UNPROTECTED');
+        return { entered: true, protected: false, reason: 'SL_ORDER_FAILED' };
       }
+
+      return { entered: true, protected: true };
 
     } catch (e: any) {
       this.logger.error(`[${symbol}] enterPosition 오류: ${e.message}`);
+      return { entered: false, protected: false, reason: `EXCEPTION: ${e.message}` };
     }
   }
 }

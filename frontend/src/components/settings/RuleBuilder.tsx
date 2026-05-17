@@ -1,5 +1,5 @@
 'use client';
-import { StrategyRule, makeDefaultRule } from '@/lib/strategyRules';
+import { StrategyRule, RuleType, makeDefaultRule } from '@/lib/strategyRules';
 import { RuleCard } from './RuleCard';
 
 interface Props {
@@ -7,10 +7,11 @@ interface Props {
   rules:      StrategyRule[];
   showWeight: boolean;
   onChange:   (rules: StrategyRule[]) => void;
-  warnUnused?: boolean;  // true면 "현재 미사용" 배지 표시
+  warnUnused?:        boolean;
+  excludeRuleTypes?: RuleType[];  // 선택 불가 rule types
 }
 
-export function RuleBuilder({ title, rules, showWeight, onChange, warnUnused }: Props) {
+export function RuleBuilder({ title, rules, showWeight, onChange, warnUnused, excludeRuleTypes }: Props) {
   const add    = () => onChange([...rules, makeDefaultRule('RSI_RANGE')]);
   const update = (i: number, r: StrategyRule) => onChange(rules.map((x, idx) => idx === i ? r : x));
   const remove = (i: number) => onChange(rules.filter((_, idx) => idx !== i));
@@ -38,6 +39,7 @@ export function RuleBuilder({ title, rules, showWeight, onChange, warnUnused }: 
       )}
       {rules.map((r, i) => (
         <RuleCard key={r.id} rule={r} showWeight={showWeight}
+          excludeRuleTypes={excludeRuleTypes}
           onChange={u => update(i, u)} onDelete={() => remove(i)} />
       ))}
     </div>
