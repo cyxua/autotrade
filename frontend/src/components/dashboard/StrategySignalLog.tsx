@@ -7,7 +7,7 @@ interface BlockLog {
   symbol:     string;
   strategyId: string | null;
   reason:     string;
-  detail:     any;
+  detail:     unknown;
   createdAt:  string;
 }
 
@@ -27,10 +27,11 @@ const REASON_COLOR: Record<string, string> = {
   MIN_NOTIONAL_AFTER_ROUNDING: '#FBBF24',
 };
 
-function summarizeDetail(detail: any): string {
+function summarizeDetail(detail: unknown): string {
   if (!detail) return '';
   if (typeof detail === 'string') return detail.slice(0, 60);
-  const entries = Object.entries(detail).slice(0, 3);
+  if (typeof detail !== 'object') return String(detail).slice(0, 60);
+  const entries = Object.entries(detail as Record<string, unknown>).slice(0, 3);
   return entries.map(([k, v]) => `${k}:${v}`).join(' ');
 }
 
@@ -46,7 +47,7 @@ export function StrategySignalLog() {
   const load = useCallback(async () => {
     try {
       const r = await api.get('/settings/risk/block-logs?limit=30');
-      setLogs(r.data.data?.items ?? []);
+      setLogs((r.data.data?.items ?? []) as BlockLog[]);
       setError(false);
     } catch {
       setError(true);

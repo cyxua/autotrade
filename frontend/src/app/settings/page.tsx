@@ -2,19 +2,21 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
+import type { ApiConfig } from '@/types/trading';
 
 const inp = { width: '100%', background: '#1F2937', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#F9FAFB', fontSize: '14px', outline: 'none' } as const;
 const lbl = { fontSize: '12px', color: '#9CA3AF', display: 'block', marginBottom: '4px' } as const;
 
 export default function SettingsPage() {
-  const [cfg, setCfg] = useState<any>(null);
-  const [apiKey, setApiKey] = useState('');
+  const [cfg, setCfg]           = useState<ApiConfig | null>(null);
+  const [apiKey, setApiKey]     = useState('');
   const [secretKey, setSecretKey] = useState('');
-  const [mode, setMode] = useState('TESTNET');
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [msg, setMsg] = useState('');
-  const router = useRouter();
+  const [mode, setMode]         = useState('TESTNET');
+  const [saving, setSaving]     = useState(false);
+  const [testing, setTesting]   = useState(false);
+  const [msg, setMsg]           = useState('');
+  const router                  = useRouter();
 
   useEffect(() => {
     api.get('/settings/api').then(r => {
@@ -23,7 +25,7 @@ export default function SettingsPage() {
       if (d.apiKey) setApiKey(d.apiKey);
       if (d.tradingMode) setMode(d.tradingMode);
     }).catch(() => router.push('/login'));
-  }, []);
+  }, [router]);
 
   const save = async () => {
     if (!apiKey || !secretKey) { setMsg('❌ API Key와 Secret Key를 모두 입력하세요.'); return; }
@@ -33,7 +35,7 @@ export default function SettingsPage() {
       setMsg('✅ 저장 완료! Secret Key는 암호화되어 저장됩니다.');
       setSecretKey('');
       const r = await api.get('/settings/api'); setCfg(r.data.data);
-    } catch (e: any) { setMsg('❌ ' + (e.response?.data?.error?.message ?? '저장 실패')); }
+    } catch (error: unknown) { setMsg('❌ ' + getApiErrorMessage(error, '저장 실패')); }
     finally { setSaving(false); }
   };
 
@@ -43,7 +45,7 @@ export default function SettingsPage() {
       await api.post('/settings/api/test');
       setMsg('✅ API 연결 성공!');
       const r = await api.get('/settings/api'); setCfg(r.data.data);
-    } catch (e: any) { setMsg('❌ ' + (e.response?.data?.error?.message ?? '연결 실패')); }
+    } catch (error: unknown) { setMsg('❌ ' + getApiErrorMessage(error, '연결 실패')); }
     finally { setTesting(false); }
   };
 

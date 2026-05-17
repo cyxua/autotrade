@@ -1,4 +1,5 @@
 'use client';
+import { getApiErrorMessage } from '@/lib/utils';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useTradingModeStore } from '@/store/tradingModeStore';
@@ -36,9 +37,7 @@ export function AutoTradeToggle() {
         await api.post('/engine/stop');
       addNotification('warning', '자동매매 중지', '자동매매가 중지되었습니다.');
         setStatus('STOPPED');
-      } catch (e: any) {
-        alert(e.response?.data?.error?.message ?? '중지 실패');
-      } finally { setLoading(false); }
+      } catch (error: unknown) { alert(getApiErrorMessage(error, '중지 실패')); } finally { setLoading(false); }
       return;
     }
     if (mode === 'LIVE') {
@@ -50,9 +49,7 @@ export function AutoTradeToggle() {
       await api.post('/engine/start');
       addNotification('success', '자동매매 시작', '자동매매가 시작되었습니다. 전략이 실행됩니다.');
       setStatus('RUNNING');
-    } catch (e: any) {
-      alert(e.response?.data?.error?.message ?? '시작 실패');
-    } finally { setLoading(false); }
+    } catch (error: unknown) { alert(getApiErrorMessage(error, '시작 실패')); } finally { setLoading(false); }
   };
 
   const handleLiveConfirm = async () => {
@@ -62,9 +59,7 @@ export function AutoTradeToggle() {
     try {
       await api.post('/engine/start');
       setStatus('RUNNING');
-    } catch (e: any) {
-      alert(e.response?.data?.error?.message ?? '시작 실패');
-    } finally { setLoading(false); }
+    } catch (error: unknown) { alert(getApiErrorMessage(error, '시작 실패')); } finally { setLoading(false); }
   };
 
   return (

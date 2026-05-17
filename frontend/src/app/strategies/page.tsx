@@ -1,7 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
+import type { Strategy } from '@/types/trading';
 import { fmtUsdt } from '@/lib/utils';
 
 const TYPES: Record<string, string> = {
@@ -10,24 +12,28 @@ const TYPES: Record<string, string> = {
 };
 
 export default function StrategiesPage() {
-  const [strategies, setStrategies] = useState<any[]>([]);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
   const router = useRouter();
 
-  const load = () => api.get('/strategies').then(r => setStrategies(r.data.data)).catch(() => router.push('/login'));
+  const load = useCallback(() => {
+    api.get('/strategies')
+      .then(r => setStrategies(r.data.data as Strategy[]))
+      .catch(() => router.push('/login'));
+  }, [router]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const toggle = async (id: string, name: string, enabled: boolean) => {
+  const toggle = async (id: string) => {
     try {
       await api.patch(`/strategies/${id}/toggle`);
       load();
-    } catch (e: any) { alert(e.response?.data?.error?.message ?? '오류'); }
+    } catch (error: unknown) { alert(getApiErrorMessage(error, '오류')); }
   };
 
   const del = async (id: string, name: string) => {
     if (!confirm(`"${name}" 전략을 삭제하시겠습니까?`)) return;
     try { await api.delete(`/strategies/${id}`); load(); }
-    catch (e: any) { alert(e.response?.data?.error?.message ?? '삭제 실패'); }
+    catch (error: unknown) { alert(getApiErrorMessage(error, '삭제 실패')); }
   };
 
   return (
@@ -53,7 +59,7 @@ export default function StrategiesPage() {
             <div key={s.id} style={{ background: '#111827', border: `1px solid ${s.enabled ? '#166534' : '#1F2937'}`, borderRadius: '12px', padding: '16px', marginBottom: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <button onClick={() => toggle(s.id, s.name, s.enabled)}
+                  <button onClick={() => toggle(s.id)}
                     style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', cursor: 'pointer', background: s.enabled ? '#166534' : '#374151', color: s.enabled ? '#4ADE80' : '#9CA3AF', fontSize: '16px' }}>
                     ⏻
                   </button>

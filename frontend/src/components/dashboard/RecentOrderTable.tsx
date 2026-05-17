@@ -1,7 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { fetchOrders, OrderInfo } from '@/lib/futuresApi';
+import { getApiErrorMessage } from '@/lib/utils';
 import { useChartStore } from '@/store/chartStore';
+
+type OrderSource = 'binance' | 'db' | '';
 
 const STATUS_COLOR: Record<string, string> = {
   FILLED: '#4ADE80', CANCELED: '#6B7280',
@@ -20,25 +23,25 @@ export function RecentOrderTable() {
   const { symbol } = useChartStore();
   const [orders, setOrders] = useState<OrderInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [source, setSource] = useState<'binance' | 'db' | ''>('');
+  const [error, setError]   = useState('');
+  const [source, setSource] = useState<OrderSource>('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const result = await fetchOrders(symbol, 20);
-      setOrders(result.data as OrderInfo[]);
-      setSource(result.source as any);
-    } catch (e: any) {
-      setError(e.response?.data?.error?.message ?? '주문 조회 실패');
+      setOrders(result.data);
+      setSource((result.source as OrderSource) ?? '');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, '주문 조회 실패'));
       setOrders([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [symbol]);
 
-  useEffect(() => { load(); }, [symbol]);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div style={{ background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', overflow: 'hidden' }}>
@@ -66,9 +69,7 @@ export function RecentOrderTable() {
           <p style={{ fontSize: '11px', color: '#4B5563' }}>API 연결 및 권한을 확인하세요.</p>
         </div>
       ) : orders.length === 0 ? (
-        <div style={{ padding: '32px', textAlign: 'center', color: '#4B5563', fontSize: '13px' }}>
-          최근 주문 없음
-        </div>
+        <div style={{ padding: '32px', textAlign: 'center', color: '#4B5563', fontSize: '13px' }}>최근 주문 없음</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>

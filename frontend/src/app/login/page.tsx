@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('admin@example.com');
@@ -17,8 +18,8 @@ export default function LoginPage() {
     try {
       await api.post('/auth/login', { email, password });
       router.push('/dashboard');
-    } catch (e: any) {
-      setError(e.response?.data?.error?.message ?? '로그인에 실패했습니다.');
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, '로그인에 실패했습니다.'));
     } finally {
       setLoading(false);
     }

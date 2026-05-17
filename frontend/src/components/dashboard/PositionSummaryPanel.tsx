@@ -4,6 +4,7 @@ import { useAccountStore } from '@/store/accountStore';
 import { useAutoTradeStore } from '@/store/autoTradeStore';
 import { useRiskStore } from '@/store/riskStore';
 import { api } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
 
 export function PositionSummaryPanel() {
   const { positions, balance, isLoading, error } = useAccountStore();
@@ -23,8 +24,8 @@ export function PositionSummaryPanel() {
     try {
       await api.post('/engine/close-position', { symbol });
       alert(`✅ ${symbol} 청산 완료`);
-    } catch (e: any) {
-      alert(e.response?.data?.error?.message ?? '청산 실패');
+    } catch (error: unknown) {
+      alert(getApiErrorMessage(error, '청산 실패'));
     } finally {
       setClosingSymbol(null);
     }
@@ -53,8 +54,8 @@ export function PositionSummaryPanel() {
             ))}
             <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #374151', display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '11px', color: '#6B7280' }}>미실현 손익</span>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: parseFloat(String(balance.unrealizedPnl ?? 0)) >= 0 ? '#4ADE80' : '#F87171' }}>
-                {fmtPnl(balance.unrealizedPnl ?? 0)}
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: parseFloat(String(balance.crossUnPnl ?? 0)) >= 0 ? '#4ADE80' : '#F87171' }}>
+                {fmtPnl(balance.crossUnPnl ?? 0)}
               </span>
             </div>
           </>

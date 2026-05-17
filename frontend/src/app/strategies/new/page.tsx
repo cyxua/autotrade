@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { EvalMode, StrategyRule, StrategyParams, DEFAULT_PARAMS } from '@/lib/strategyRules';
+import type { EvalMode, StrategyParams } from '@/lib/strategyRules';
+import { DEFAULT_PARAMS } from '@/lib/strategyRules';
 import { RuleBuilder } from '@/components/settings/RuleBuilder';
 
 const inp: React.CSSProperties = { width: '100%', background: '#1F2937', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#F9FAFB', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
@@ -22,7 +23,9 @@ export default function NewStrategyPage() {
     params: { ...DEFAULT_PARAMS } as StrategyParams,
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setParam = (k: keyof StrategyParams, v: any) =>
     setForm(p => ({ ...p, params: { ...p.params, [k]: v } }));
 
@@ -32,6 +35,7 @@ export default function NewStrategyPage() {
     try {
       await api.post('/strategies', form);
       router.push('/strategies');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setMsg('❌ ' + (e.response?.data?.error?.message ?? '저장 실패'));
     } finally { setLoading(false); }
@@ -89,7 +93,7 @@ export default function NewStrategyPage() {
             <div style={{ display: 'flex', gap: '16px', padding: '10px 0' }}>
               {([['allowLong','롱'],['allowShort','숏']] as const).map(([k,l]) => (
                 <label key={k} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#D1D5DB' }}>
-                  <input type="checkbox" checked={(form as any)[k]} onChange={e => set(k, e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#EAB308' }} />{l}
+                  <input type="checkbox" checked={(form[k as keyof typeof form] as boolean)} onChange={e => set(k, e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#EAB308' }} />{l}
                 </label>
               ))}
             </div>

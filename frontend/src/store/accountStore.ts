@@ -1,4 +1,3 @@
-import { useNotificationStore } from './useNotificationStore';
 import { create } from 'zustand';
 import type { BalanceInfo, AccountInfo, PositionInfo } from '@/lib/futuresApi';
 

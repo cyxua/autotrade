@@ -35,7 +35,7 @@ interface RealtimeTickerState {
   setConnectionStatus: (status: ConnectionStatus) => void;
 }
 
-export const useRealtimeTickerStore = create<RealtimeTickerState>((set, get) => ({
+export const useRealtimeTickerStore = create<RealtimeTickerState>((set) => ({
   symbol: 'BTCUSDT',
   lastPrice: '-',
   markPrice: '-',

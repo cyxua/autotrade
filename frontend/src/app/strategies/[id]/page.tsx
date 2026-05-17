@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { EvalMode, StrategyParams, DEFAULT_PARAMS } from '@/lib/strategyRules';
+import type { EvalMode, StrategyParams } from '@/lib/strategyRules';
+import { DEFAULT_PARAMS } from '@/lib/strategyRules';
 import { RuleBuilder } from '@/components/settings/RuleBuilder';
 
 const inp: React.CSSProperties = { width: '100%', background: '#1F2937', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#F9FAFB', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
@@ -14,7 +15,7 @@ export default function EditStrategyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
-  const [form, setForm] = useState<any>(null);
+  const [form, setForm] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     api.get(`/strategies/${id}`)
@@ -24,12 +25,15 @@ export default function EditStrategyPage() {
         setForm(d);
       })
       .catch(() => router.push('/strategies'));
-  }, [id]);
+  }, [id, router]);
 
   if (!form) return <div style={{ color: '#9CA3AF', padding: '48px', textAlign: 'center' }}>로딩 중...</div>;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const set = (k: string, v: any) => setForm((p: any) => ({ ...p, [k]: v }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setParam = (k: keyof StrategyParams, v: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setForm((p: any) => ({ ...p, params: { ...p.params, [k]: v } }));
 
   const submit = async () => {
@@ -37,6 +41,7 @@ export default function EditStrategyPage() {
     try {
       await api.put(`/strategies/${id}`, form);
       router.push('/strategies');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setMsg('❌ ' + (e.response?.data?.error?.message ?? '저장 실패'));
     } finally { setLoading(false); }

@@ -28,7 +28,7 @@ export function RealtimeTickerPanel({ symbol }: Props) {
     lastPrice, markPrice, bestBid, bestAsk,
     priceChangePercent, highPrice24h, lowPrice24h,
     quoteVolume24h, tradeCount24h, lastTradeQty, lastTradeSide,
-    previousPrice, connectionStatus,
+    previousPrice,
     updateMarkPrice, updateAggTrade, updateBookTicker, updateTicker24h,
     setConnectionStatus, setSymbol,
   } = useRealtimeTickerStore();
@@ -102,6 +102,7 @@ export function RealtimeTickerPanel({ symbol }: Props) {
         wsRef.current.close();
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
 
   const changeNum = parseFloat(priceChangePercent);

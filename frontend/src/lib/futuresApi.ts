@@ -40,7 +40,7 @@ export async function fetchPositions() {
 }
 
 export async function fetchOrders(symbol?: string, limit = 20) {
-  const params: any = { limit };
+  const params: Record<string, string | number> = { limit };
   if (symbol) params.symbol = symbol;
   const res = await api.get('/futures/orders', { params });
   return { data: res.data.data as OrderInfo[], source: res.data.source };

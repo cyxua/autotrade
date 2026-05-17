@@ -44,7 +44,7 @@ export function SymbolSelector() {
   }, [open]);
 
   const selectSymbol = (s: string) => {
-    setSymbol(s as any);
+    setSymbol(s);
     setOpen(false);
     setQuery('');
     const newRecent = [s, ...recent.filter(r => r !== s)].slice(0, MAX_RECENT);

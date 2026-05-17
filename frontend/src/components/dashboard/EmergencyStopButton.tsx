@@ -1,4 +1,5 @@
 'use client';
+import { getApiErrorMessage } from '@/lib/utils';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useAutoTradeStore } from '@/store/autoTradeStore';
@@ -18,9 +19,7 @@ export function EmergencyStopButton() {
       setStatus('EMERGENCY_STOPPED');
       setOpen(false);
       alert('🚨 긴급 정지 완료');
-    } catch (e: any) {
-      alert(e.response?.data?.error?.message ?? '오류');
-    } finally { setLoading(false); }
+    } catch (error: unknown) { alert(getApiErrorMessage(error, '오류')); } finally { setLoading(false); }
   };
 
   const handleReset = async () => {
@@ -29,9 +28,7 @@ export function EmergencyStopButton() {
       await api.post('/engine/reset-emergency');
       setStatus('STOPPED');
       alert('✅ 긴급 정지 해제 완료');
-    } catch (e: any) {
-      alert(e.response?.data?.error?.message ?? '오류');
-    } finally { setLoading(false); }
+    } catch (error: unknown) { alert(getApiErrorMessage(error, '오류')); } finally { setLoading(false); }
   };
 
   if (isEmergencyStopped) {

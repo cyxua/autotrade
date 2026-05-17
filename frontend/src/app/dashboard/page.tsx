@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
 import { fetchBalance, fetchAccount, fetchPositions } from '@/lib/futuresApi';
 import { useTradingModeStore } from '@/store/tradingModeStore';
 import { useAutoTradeStore } from '@/store/autoTradeStore';
@@ -19,6 +20,7 @@ import { TradingChartPanel } from '@/components/dashboard/TradingChartPanel';
 import { PositionSummaryPanel } from '@/components/dashboard/PositionSummaryPanel';
 import { RecentOrderTable } from '@/components/dashboard/RecentOrderTable';
 import { StrategySignalLog } from '@/components/dashboard/StrategySignalLog';
+import type { DashboardSummary } from '@/types/trading';
 
 function StatCard({ label, value, color = '#F9FAFB', sub = '', small = false }: {
   label: string; value: string; color?: string; sub?: string; small?: boolean;
@@ -34,35 +36,35 @@ function StatCard({ label, value, color = '#F9FAFB', sub = '', small = false }: 
 
 export default function DashboardPage() {
   const { symbol: chartSymbol } = useChartStore();
-  const [summary, setSummary] = useState<any>(null);
-  const router = useRouter();
-  const { setMode, mode } = useTradingModeStore();
+  const [summary, setSummary]   = useState<DashboardSummary | null>(null);
+  const router                  = useRouter();
+  const { setMode, mode }       = useTradingModeStore();
   const { status, setStatus, setStats } = useAutoTradeStore();
-  const { setConnection } = useApiConnectionStore();
-  const { setRisk } = useRiskStore();
+  const { setConnection }       = useApiConnectionStore();
+  const { setRisk }             = useRiskStore();
   const { setBalance, setAccount, setPositions, setLoading, setError, setLastUpdated } = useAccountStore();
-  const { balance, account, positions } = useAccountStore();
+  const { account, positions } = useAccountStore();
 
-  // ── 엔진/설정 데이터 ──────────────────────────────
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     try {
       const r = await api.get('/dashboard/summary');
-      const d = r.data.data;
+      const d = r.data.data as DashboardSummary;
       setSummary(d);
       setStatus(d.engine.status);
       setStats({ dailyPnl: d.engine.dailyPnl, dailyTrades: d.engine.dailyTrades, consecLossCount: d.engine.consecLossCount });
       const apiR = await api.get('/settings/api');
-      const cfg = apiR.data.data;
+      const cfg  = apiR.data.data;
       if (cfg?.tradingMode) setMode(cfg.tradingMode);
       setConnection({ isConnected: cfg?.isConnected ?? false, hasSecret: cfg?.hasSecret ?? false });
       const riskR = await api.get('/settings/risk');
-      const risk = riskR.data.data;
+      const risk  = riskR.data.data;
       if (risk) setRisk({ maxLeverage: risk.maxLeverage ?? 0, maxDailyLossUsdt: risk.maxDailyLossUsdt ?? 0, maxPositions: 1, consecutiveLossStop: risk.consecutiveLossStop ?? 0, isLoaded: true });
-    } catch { router.push('/login'); }
-  };
+    } catch {
+      router.push('/login');
+    }
+  }, [router, setMode, setStatus, setStats, setConnection, setRisk]);
 
-  // ── 실제 Binance 데이터 ───────────────────────────
-  const loadBinanceData = async () => {
+  const loadBinanceData = useCallback(async () => {
     setLoading(true);
     try {
       const [bal, acc, pos] = await Promise.all([
@@ -72,15 +74,15 @@ export default function DashboardPage() {
       ]);
       if (bal) setBalance(bal);
       if (acc) setAccount(acc);
-      setPositions(pos as any);
+      setPositions(pos);
       setLastUpdated();
       setError(null);
-    } catch (e: any) {
-      setError(e.message ?? 'Binance API 오류');
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, 'Binance API 오류'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [setBalance, setAccount, setPositions, setLoading, setError, setLastUpdated]);
 
   useEffect(() => {
     loadSummary();
@@ -88,17 +90,17 @@ export default function DashboardPage() {
     const iv1 = setInterval(loadSummary, 20_000);
     const iv2 = setInterval(loadBinanceData, 60_000);
     return () => { clearInterval(iv1); clearInterval(iv2); };
-  }, []);
+  }, [loadSummary, loadBinanceData]);
 
-  const isLive = mode === 'LIVE';
-  const totalWallet = account?.totalWalletBalance ?? summary?.account?.totalWalletBalance ?? '—';
-  const available  = account?.availableBalance    ?? summary?.account?.availableBalance  ?? '—';
-  const unrealized = account?.totalUnrealizedProfit ?? '—';
-  const posCount   = positions.length || summary?.positions?.count || 0;
-  const todayPnl   = summary?.todayStats?.realizedPnl ?? 0;
-  const trades     = summary?.todayStats?.trades ?? 0;
-  const winRate    = summary?.todayStats?.winRate ?? 0;
-  const consecLoss = summary?.engine?.consecLossCount ?? 0;
+  const isLive     = mode === 'LIVE';
+  const totalWallet = account?.totalWalletBalance    ?? summary?.account?.totalWalletBalance ?? '—';
+  const available   = account?.availableBalance      ?? summary?.account?.availableBalance   ?? '—';
+  const unrealized  = account?.totalUnrealizedProfit ?? '—';
+  const posCount    = positions.length || summary?.positions?.count || 0;
+  const todayPnl    = summary?.todayStats?.realizedPnl ?? 0;
+  const trades      = summary?.todayStats?.trades ?? 0;
+  const winRate     = summary?.todayStats?.winRate ?? 0;
+  const consecLoss  = summary?.engine?.consecLossCount ?? 0;
 
   const fmtUsdt = (v: string | number) => {
     const n = parseFloat(String(v));
@@ -108,7 +110,6 @@ export default function DashboardPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#030712' }}>
-      {/* 헤더 */}
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '0 20px', height: '52px', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <span style={{ fontWeight: 'bold', color: '#EAB308', fontSize: '17px' }}>⚡ AutoTrade</span>
         <ModeBadge />
@@ -135,28 +136,24 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 잔고 카드 (실제 API) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px', marginBottom: '10px' }}>
-          <StatCard label="총 지갑 잔고" value={`${parseFloat(totalWallet).toLocaleString(undefined,{maximumFractionDigits:2})} USDT`} />
+          <StatCard label="총 지갑 잔고"   value={`${parseFloat(totalWallet).toLocaleString(undefined,{maximumFractionDigits:2})} USDT`} />
           <StatCard label="사용 가능 잔고" value={`${parseFloat(available).toLocaleString(undefined,{maximumFractionDigits:2})} USDT`} />
-          <StatCard label="미실현 손익" value={`${fmtUsdt(unrealized)} USDT`} color={parseFloat(String(unrealized)) >= 0 ? '#4ADE80' : '#F87171'} />
-          <StatCard label="오픈 포지션" value={`${posCount}개`} />
+          <StatCard label="미실현 손익"    value={`${fmtUsdt(unrealized)} USDT`} color={parseFloat(String(unrealized)) >= 0 ? '#4ADE80' : '#F87171'} />
+          <StatCard label="오픈 포지션"    value={`${posCount}개`} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px', marginBottom: '14px' }}>
-          <StatCard label="오늘 실현 손익" value={`${fmtUsdt(todayPnl)} USDT`} color={todayPnl >= 0 ? '#4ADE80' : '#F87171'} sub={`거래 ${trades}회`} />
-          <StatCard label="승률" value={`${trades > 0 ? (winRate * 100).toFixed(0) : 0}%`} />
-          <StatCard label="연속 손실" value={`${consecLoss}회`} color={consecLoss > 0 ? '#F87171' : '#4ADE80'} />
-          <StatCard label="오늘 거래 횟수" value={`${summary?.engine?.dailyTrades ?? 0}회`} />
+          <StatCard label="오늘 실현 손익"  value={`${fmtUsdt(todayPnl)} USDT`} color={todayPnl >= 0 ? '#4ADE80' : '#F87171'} sub={`거래 ${trades}회`} />
+          <StatCard label="승률"           value={`${trades > 0 ? (winRate * 100).toFixed(0) : 0}%`} />
+          <StatCard label="연속 손실"       value={`${consecLoss}회`} color={consecLoss > 0 ? '#F87171' : '#4ADE80'} />
+          <StatCard label="오늘 거래 횟수"  value={`${summary?.engine?.dailyTrades ?? 0}회`} />
         </div>
 
-        {/* 차트 + 포지션 */}
         <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 280px', gap: '12px', marginBottom: '12px' }}>
           <RealtimeTickerPanel symbol={chartSymbol} />
           <TradingChartPanel />
           <PositionSummaryPanel />
         </div>
-
-        {/* 주문 로그 + 신호 로그 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <RecentOrderTable />
           <StrategySignalLog />
