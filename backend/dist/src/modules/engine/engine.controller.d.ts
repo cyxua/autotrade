@@ -40,16 +40,22 @@ export declare class EngineController {
         success: boolean;
         data: {
             status: string;
-            canceledOrders: number;
+            closePositionsRequested: boolean;
+            positionsFound: number;
+            closeAttempts: number;
+            closeSuccess: number;
+            canceledNormalOrders: number;
             canceledAlgoOrders: number;
             cancelErrors: {
                 symbol: string;
                 error: string;
             }[];
-            closedPositions: number;
             closeErrors: {
                 symbol: string;
-                error: string;
+                reason: string;
+                message?: string;
+                posAmt?: string;
+                qty?: string;
             }[];
             positionFetchError: string;
         };
@@ -66,10 +72,20 @@ export declare class EngineController {
             status: string;
             symbol?: undefined;
             quantity?: undefined;
+            remaining?: undefined;
+            message?: undefined;
         } | {
             status: string;
             symbol: string;
             quantity: string;
+            remaining: any;
+            message: string;
+        } | {
+            status: string;
+            symbol: string;
+            quantity: string;
+            remaining?: undefined;
+            message?: undefined;
         };
     }>;
 }

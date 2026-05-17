@@ -34,16 +34,22 @@ export declare class EngineService {
     }>;
     emergencyStop(userId: string, closePositions?: boolean): Promise<{
         status: string;
-        canceledOrders: number;
+        closePositionsRequested: boolean;
+        positionsFound: number;
+        closeAttempts: number;
+        closeSuccess: number;
+        canceledNormalOrders: number;
         canceledAlgoOrders: number;
         cancelErrors: {
             symbol: string;
             error: string;
         }[];
-        closedPositions: number;
         closeErrors: {
             symbol: string;
-            error: string;
+            reason: string;
+            message?: string;
+            posAmt?: string;
+            qty?: string;
         }[];
         positionFetchError: string;
     }>;
@@ -54,9 +60,19 @@ export declare class EngineService {
         status: string;
         symbol?: undefined;
         quantity?: undefined;
+        remaining?: undefined;
+        message?: undefined;
     } | {
         status: string;
         symbol: string;
         quantity: string;
+        remaining: any;
+        message: string;
+    } | {
+        status: string;
+        symbol: string;
+        quantity: string;
+        remaining?: undefined;
+        message?: undefined;
     }>;
 }
