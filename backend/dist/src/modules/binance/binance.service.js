@@ -277,6 +277,13 @@ let BinanceService = BinanceService_1 = class BinanceService {
             throw new Error('algoId 또는 clientAlgoId 중 하나는 필수');
         return this.signedRequest('GET', '/fapi/v1/algoOrder', params);
     }
+    async getOpenAlgoOrders(symbol) {
+        const params = {};
+        if (symbol)
+            params.symbol = symbol;
+        const res = await this.signedRequest('GET', '/fapi/v1/openAlgoOrders', params);
+        return res.orders ?? res ?? [];
+    }
     async getTickerPrice(symbol) {
         const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
         return parseFloat(res.data.price);

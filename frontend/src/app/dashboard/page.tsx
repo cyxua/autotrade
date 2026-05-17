@@ -20,6 +20,7 @@ import { TradingChartPanel } from '@/components/dashboard/TradingChartPanel';
 import { PositionSummaryPanel } from '@/components/dashboard/PositionSummaryPanel';
 import { RecentOrderTable } from '@/components/dashboard/RecentOrderTable';
 import { StrategySignalLog } from '@/components/dashboard/StrategySignalLog';
+import { TradingHealthCard } from '@/components/dashboard/TradingHealthCard';
 import type { DashboardSummary } from '@/types/trading';
 
 function StatCard({ label, value, color = '#F9FAFB', sub = '', small = false }: {
@@ -154,10 +155,11 @@ export default function DashboardPage() {
           <TradingChartPanel />
           <PositionSummaryPanel />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
           <RecentOrderTable />
           <StrategySignalLog />
         </div>
+        <TradingHealthCard />
       </div>
     </div>
   );

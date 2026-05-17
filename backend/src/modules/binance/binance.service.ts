@@ -242,6 +242,15 @@ export class BinanceService {
     return this.signedRequest('GET', '/fapi/v1/algoOrder', params);
   }
 
+
+  // GET /fapi/v1/openAlgoOrders — 미체결 Algo 주문 전체 조회
+  async getOpenAlgoOrders(symbol?: string): Promise<any[]> {
+    const params: Record<string, string> = {};
+    if (symbol) params.symbol = symbol;
+    const res = await this.signedRequest('GET', '/fapi/v1/openAlgoOrders', params);
+    return res.orders ?? res ?? [];
+  }
+
   async getTickerPrice(symbol: string): Promise<number> {
     const res = await this.client.get('/fapi/v1/ticker/price', { params: { symbol } });
     return parseFloat(res.data.price);

@@ -9,10 +9,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DashboardModule = void 0;
 const common_1 = require("@nestjs/common");
 const dashboard_controller_1 = require("./dashboard.controller");
+const binance_module_1 = require("../binance/binance.module");
 let DashboardModule = class DashboardModule {
 };
 exports.DashboardModule = DashboardModule;
 exports.DashboardModule = DashboardModule = __decorate([
-    (0, common_1.Module)({ controllers: [dashboard_controller_1.DashboardController] })
+    (0, common_1.Module)({
+        imports: [binance_module_1.BinanceModule],
+        controllers: [dashboard_controller_1.DashboardController],
+    })
 ], DashboardModule);
 //# sourceMappingURL=dashboard.module.js.map

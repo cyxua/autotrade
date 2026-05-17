@@ -48,5 +48,6 @@ export declare class BinanceService {
     cancelAlgoOrder(algoId?: number, clientAlgoId?: string): Promise<any>;
     cancelAllAlgoOrders(symbol: string): Promise<any>;
     getAlgoOrder(algoId?: number, clientAlgoId?: string): Promise<any>;
+    getOpenAlgoOrders(symbol?: string): Promise<any[]>;
     getTickerPrice(symbol: string): Promise<number>;
 }
