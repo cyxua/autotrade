@@ -23,7 +23,8 @@ const CRITICAL_REASONS = new Set([
     'ENTRY_ORDER_STATUS_UNKNOWN', 'POSITION_STILL_OPEN', 'CLOSE_VERIFY_FAILED',
 ]);
 function isValidSlAlgo(o, positionAmt) {
-    if (o.type !== 'STOP_MARKET')
+    const orderType = o.orderType ?? o.type;
+    if (orderType !== 'STOP_MARKET')
         return false;
     const cp = String(o.closePosition);
     if (cp !== 'true' && cp !== 'TRUE')
@@ -149,7 +150,7 @@ let DashboardController = class DashboardController {
                         symbol: o.symbol,
                         algoId: o.algoId,
                         clientAlgoId: o.clientAlgoId,
-                        type: o.type,
+                        type: o.orderType ?? o.type,
                         side: o.side,
                         triggerPrice: o.triggerPrice ?? o.stopPrice,
                         algoStatus: o.algoStatus,
@@ -162,7 +163,7 @@ let DashboardController = class DashboardController {
                         symbol: o.symbol,
                         algoId: o.algoId,
                         clientAlgoId: o.clientAlgoId,
-                        type: o.type,
+                        type: o.orderType ?? o.type,
                         side: o.side,
                         triggerPrice: o.triggerPrice ?? o.stopPrice,
                         algoStatus: o.algoStatus,

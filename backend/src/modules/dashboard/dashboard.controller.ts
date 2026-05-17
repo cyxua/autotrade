@@ -11,7 +11,8 @@ const CRITICAL_REASONS = new Set([
 
 // 미보호 포지션: SL Algo 조건 엄격 검사
 function isValidSlAlgo(o: any, positionAmt: number): boolean {
-  if (o.type !== 'STOP_MARKET') return false;
+  const orderType = o.orderType ?? o.type;
+  if (orderType !== 'STOP_MARKET') return false;
   const cp = String(o.closePosition);
   if (cp !== 'true' && cp !== 'TRUE') return false;
   const validStatus = ['NEW', 'ACCEPTED', 'WORKING'];
@@ -154,7 +155,7 @@ export class DashboardController {
             symbol:        o.symbol,
             algoId:        o.algoId,
             clientAlgoId:  o.clientAlgoId,
-            type:          o.type,
+            type:          o.orderType ?? o.type,   // Binance 응답은 orderType 사용
             side:          o.side,
             triggerPrice:  o.triggerPrice ?? o.stopPrice,
             algoStatus:    o.algoStatus,
@@ -167,7 +168,7 @@ export class DashboardController {
             symbol:        o.symbol,
             algoId:        o.algoId,
             clientAlgoId:  o.clientAlgoId,
-            type:          o.type,
+            type:          o.orderType ?? o.type,   // Binance 응답은 orderType 사용
             side:          o.side,
             triggerPrice:  o.triggerPrice ?? o.stopPrice,
             algoStatus:    o.algoStatus,

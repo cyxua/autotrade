@@ -144,8 +144,8 @@ export function TradingHealthCard() {
             {data!.openAlgoOrders.map((o, i) => (
               <div key={o.algoId ?? i} style={{ background: '#1F2937', borderRadius: '6px', padding: '8px', marginBottom: '4px', fontSize: '11px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 'bold', color: o.type === 'TAKE_PROFIT_MARKET' ? '#4ADE80' : '#F87171' }}>
-                    {o.symbol} {o.type === 'TAKE_PROFIT_MARKET' ? 'TP' : 'SL'}
+                  <span style={{ fontWeight: 'bold', color: (o.type === 'TAKE_PROFIT_MARKET' || o.type === 'TAKE_PROFIT') ? '#4ADE80' : '#F87171' }}>
+                    {o.symbol} {(o.type === 'TAKE_PROFIT_MARKET' || o.type === 'TAKE_PROFIT') ? 'TP' : 'SL'}
                   </span>
                   <span style={{ color: '#9CA3AF' }}>{o.algoStatus}</span>
                 </div>
