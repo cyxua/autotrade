@@ -11,6 +11,7 @@ interface HealthFlags {
   criticalBlockReasons:  { reason: string; symbol: string; createdAt: string }[];
   isSafeToStartAutoTrade:  boolean;
   criticalWindowMinutes:   number;
+  scannedSymbols:          number;
   fetchErrors:             string[];
 }
 interface HealthData {
@@ -74,9 +75,19 @@ export function TradingHealthCard() {
         )}
 
         {/* 자동매매 가능 여부 */}
-        <div style={{ background: flags?.isSafeToStartAutoTrade ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', textAlign: 'center' }}>
+        <div style={{ background: flags?.isSafeToStartAutoTrade ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)', borderRadius: '8px', padding: '10px 14px', marginBottom: '8px', textAlign: 'center' }}>
           <p style={{ fontSize: '14px', fontWeight: 'bold', color: safeColor }}>{data ? safeText : '—'}</p>
         </div>
+        {/* 판단 근거 요약 */}
+        {data && (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', fontSize: '10px', color: '#6B7280' }}>
+            <span>조회심볼: <b style={{ color: '#9CA3AF' }}>{flags?.scannedSymbols ?? 0}개</b></span>
+            <span>·</span>
+            <span>Algo주문: <b style={{ color: '#9CA3AF' }}>{data.openAlgoOrders.length}건</b></span>
+            <span>·</span>
+            <span>치명로그기준: <b style={{ color: '#9CA3AF' }}>{flags?.criticalWindowMinutes ?? 60}분 이내</b></span>
+          </div>
+        )}
 
         {/* fetch 오류 */}
         {(flags?.fetchErrors?.length ?? 0) > 0 && (

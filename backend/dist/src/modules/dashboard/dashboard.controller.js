@@ -87,6 +87,40 @@ let DashboardController = class DashboardController {
     async tradingHealth(u) {
         const fetchErrors = [];
         const engineState = await this.prisma.engineState.findUnique({ where: { userId: u.id } });
+        const activeStrategies = await this.prisma.strategy.findMany({
+            where: { userId: u.id, enabled: true }, select: { symbol: true },
+        });
+        const strategySymbols = [...new Set(activeStrategies.map(s => s.symbol))];
+        const [recentBotOrders, recentRiskBlocks] = await Promise.all([
+            this.prisma.order.findMany({
+                where: { userId: u.id },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+                select: {
+                    id: true, symbol: true, side: true, orderType: true,
+                    status: true, quantity: true, avgFillPrice: true,
+                    stopPrice: true, filledAt: true, exitReason: true, entryReason: true,
+                    binanceOrderId: true, createdAt: true,
+                },
+            }),
+            this.prisma.riskBlockLog.findMany({
+                where: { userId: u.id },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+                select: { id: true, symbol: true, reason: true, detail: true, createdAt: true },
+            }),
+        ]);
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const criticalBlocks = await this.prisma.riskBlockLog.findMany({
+            where: {
+                userId: u.id,
+                reason: { in: [...CRITICAL_REASONS] },
+                createdAt: { gte: oneHourAgo },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+            select: { id: true, symbol: true, reason: true, detail: true, createdAt: true },
+        });
         let apiLoaded = false;
         try {
             await this.binance.loadApiConfig(u.id);
@@ -95,10 +129,6 @@ let DashboardController = class DashboardController {
         catch (e) {
             fetchErrors.push(`API_CONFIG_LOAD_FAILED: ${e.message}`);
         }
-        const activeStrategies = await this.prisma.strategy.findMany({
-            where: { userId: u.id, enabled: true }, select: { symbol: true },
-        });
-        const strategySymbols = [...new Set(activeStrategies.map(s => s.symbol))];
         let currentPositions = [];
         let positionSymbols = [];
         if (apiLoaded) {
@@ -122,7 +152,12 @@ let DashboardController = class DashboardController {
                 fetchErrors.push(`POSITION_FETCH: ${e.message}`);
             }
         }
-        const allSymbols = [...new Set([...positionSymbols, ...strategySymbols])];
+        const botOrderSymbols = recentBotOrders.map(o => o.symbol).filter(Boolean);
+        const riskBlockSymbols = recentRiskBlocks.map(b => b.symbol).filter(Boolean);
+        const allSymbols = [...new Set([
+                ...positionSymbols, ...strategySymbols,
+                ...botOrderSymbols, ...riskBlockSymbols,
+            ])];
         let openOrders = [];
         if (apiLoaded) {
             try {
@@ -175,29 +210,9 @@ let DashboardController = class DashboardController {
                 fetchErrors.push(`ALGO_ORDERS_FETCH: ${e.message}`);
             }
         }
-        const recentBotOrders = await this.prisma.order.findMany({
-            where: { userId: u.id },
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-            select: {
-                id: true, symbol: true, side: true, orderType: true,
-                status: true, quantity: true, avgFillPrice: true,
-                stopPrice: true, filledAt: true, exitReason: true, entryReason: true,
-                binanceOrderId: true, createdAt: true,
-            },
-        });
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const recentRiskBlocks = await this.prisma.riskBlockLog.findMany({
-            where: { userId: u.id },
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-            select: { id: true, symbol: true, reason: true, detail: true, createdAt: true },
-        });
-        const criticalBlocks = recentRiskBlocks.filter(b => CRITICAL_REASONS.has(b.reason) && b.createdAt >= oneHourAgo);
         const unprotectedPositions = currentPositions.filter(pos => {
             const posAmt = parseFloat(pos.positionAmt);
-            const validSl = openAlgoOrders.some(o => o.symbol === pos.symbol && isValidSlAlgo(o, posAmt));
-            return !validSl;
+            return !openAlgoOrders.some(o => o.symbol === pos.symbol && isValidSlAlgo(o, posAmt));
         });
         const hasOpenPosition = currentPositions.length > 0;
         const hasOpenAlgoOrders = openAlgoOrders.length > 0;
@@ -235,6 +250,7 @@ let DashboardController = class DashboardController {
                         createdAt: b.createdAt,
                     })),
                     criticalWindowMinutes: 60,
+                    scannedSymbols: allSymbols.length,
                     isSafeToStartAutoTrade,
                     fetchErrors,
                 },
