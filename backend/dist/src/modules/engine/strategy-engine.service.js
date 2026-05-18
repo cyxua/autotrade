@@ -26,18 +26,21 @@ const prisma_service_1 = require("../../prisma/prisma.service");
 const binance_service_1 = require("../binance/binance.service");
 const indicator_service_1 = require("./indicator.service");
 const strategy_rule_evaluator_1 = require("./strategy-rule-evaluator");
+const trading_health_service_1 = require("./trading-health.service");
 let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineService {
     prisma;
     binance;
     indicator;
     evaluator;
+    tradingHealthSvc;
     logger = new common_1.Logger(StrategyEngineService_1.name);
     timers = new Map();
-    constructor(prisma, binance, indicator, evaluator) {
+    constructor(prisma, binance, indicator, evaluator, tradingHealthSvc) {
         this.prisma = prisma;
         this.binance = binance;
         this.indicator = indicator;
         this.evaluator = evaluator;
+        this.tradingHealthSvc = tradingHealthSvc;
     }
     async startEngine(userId) {
         this.stopEngine(userId);
@@ -584,6 +587,7 @@ exports.StrategyEngineService = StrategyEngineService = StrategyEngineService_1 
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         binance_service_1.BinanceService,
         indicator_service_1.IndicatorService,
-        strategy_rule_evaluator_1.StrategyRuleEvaluator])
+        strategy_rule_evaluator_1.StrategyRuleEvaluator,
+        trading_health_service_1.TradingHealthService])
 ], StrategyEngineService);
 //# sourceMappingURL=strategy-engine.service.js.map

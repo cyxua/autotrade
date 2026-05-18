@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { DashboardController } from './dashboard.controller';
-import { BinanceModule } from '../binance/binance.module';
+import { TradingHealthModule } from '../engine/trading-health.module';
 
 @Module({
-  imports: [BinanceModule],
+  imports:     [TradingHealthModule],
   controllers: [DashboardController],
 })
 export class DashboardModule {}

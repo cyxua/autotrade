@@ -6,17 +6,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DashboardModule = void 0;
+exports.TradingHealthModule = void 0;
 const common_1 = require("@nestjs/common");
-const dashboard_controller_1 = require("./dashboard.controller");
-const trading_health_module_1 = require("../engine/trading-health.module");
-let DashboardModule = class DashboardModule {
+const trading_health_service_1 = require("./trading-health.service");
+const binance_module_1 = require("../binance/binance.module");
+let TradingHealthModule = class TradingHealthModule {
 };
-exports.DashboardModule = DashboardModule;
-exports.DashboardModule = DashboardModule = __decorate([
+exports.TradingHealthModule = TradingHealthModule;
+exports.TradingHealthModule = TradingHealthModule = __decorate([
     (0, common_1.Module)({
-        imports: [trading_health_module_1.TradingHealthModule],
-        controllers: [dashboard_controller_1.DashboardController],
+        imports: [binance_module_1.BinanceModule],
+        providers: [trading_health_service_1.TradingHealthService],
+        exports: [trading_health_service_1.TradingHealthService],
     })
-], DashboardModule);
-//# sourceMappingURL=dashboard.module.js.map
+], TradingHealthModule);
+//# sourceMappingURL=trading-health.module.js.map

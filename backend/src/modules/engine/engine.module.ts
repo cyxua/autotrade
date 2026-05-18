@@ -6,9 +6,10 @@ import { StrategyRuleEvaluator } from './strategy-rule-evaluator';
 import { EngineController } from './engine.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { BinanceModule } from '../binance/binance.module';
+import { TradingHealthModule } from './trading-health.module';
 
 @Module({
-  imports: [PrismaModule, BinanceModule],
+  imports: [PrismaModule, BinanceModule, TradingHealthModule],
   controllers: [EngineController],
   providers: [
     EngineService,
@@ -16,6 +17,7 @@ import { BinanceModule } from '../binance/binance.module';
     IndicatorService,
     StrategyRuleEvaluator,
   ],
-  exports: [EngineService, StrategyEngineService],
+  // TradingHealthService는 TradingHealthModule에서 제공됨
+  exports: [EngineService, StrategyEngineService, TradingHealthModule],
 })
 export class EngineModule {}

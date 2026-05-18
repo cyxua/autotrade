@@ -1,9 +1,9 @@
+import { TradingHealthService, TradingHealthFlags } from '../engine/trading-health.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BinanceService } from '../binance/binance.service';
 export declare class DashboardController {
     private prisma;
-    private binance;
-    constructor(prisma: PrismaService, binance: BinanceService);
+    private tradingHealthSvc;
+    constructor(prisma: PrismaService, tradingHealthSvc: TradingHealthService);
     summary(u: any): Promise<{
         success: boolean;
         data: {
@@ -47,10 +47,10 @@ export declare class DashboardController {
                 id: string;
                 createdAt: Date;
                 status: import(".prisma/client").$Enums.OrderStatus;
-                side: import(".prisma/client").$Enums.OrderSide;
-                quantity: number;
                 binanceOrderId: string;
+                side: import(".prisma/client").$Enums.OrderSide;
                 orderType: import(".prisma/client").$Enums.OrderType;
+                quantity: number;
                 stopPrice: number;
                 avgFillPrice: number;
                 entryReason: string;
@@ -64,21 +64,12 @@ export declare class DashboardController {
                 reason: string;
                 detail: import("@prisma/client/runtime/library").JsonValue;
             }[];
-            healthFlags: {
-                hasOpenPosition: boolean;
-                hasOpenAlgoOrders: boolean;
-                hasUnprotectedPosition: boolean;
-                unprotectedPositions: any[];
-                hasCriticalRiskBlock: boolean;
+            healthFlags: TradingHealthFlags & {
                 criticalBlockReasons: {
                     reason: string;
                     symbol: string;
                     createdAt: Date;
                 }[];
-                criticalWindowMinutes: number;
-                scannedSymbols: number;
-                isSafeToStartAutoTrade: boolean;
-                fetchErrors: string[];
             };
         };
     }>;

@@ -14,36 +14,16 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DashboardController = void 0;
 const common_1 = require("@nestjs/common");
+const trading_health_service_1 = require("../engine/trading-health.service");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 const prisma_service_1 = require("../../prisma/prisma.service");
-const binance_service_1 = require("../binance/binance.service");
-const CRITICAL_REASONS = new Set([
-    'ENTRY_ORDER_UNPROTECTED', 'SL_ORDER_FAILED',
-    'ENTRY_ORDER_STATUS_UNKNOWN', 'POSITION_STILL_OPEN', 'CLOSE_VERIFY_FAILED',
-]);
-function isValidSlAlgo(o, positionAmt) {
-    const orderType = o.orderType ?? o.type;
-    if (orderType !== 'STOP_MARKET')
-        return false;
-    const cp = String(o.closePosition);
-    if (cp !== 'true' && cp !== 'TRUE')
-        return false;
-    const validStatus = ['NEW', 'ACCEPTED', 'WORKING'];
-    if (!validStatus.includes(o.algoStatus))
-        return false;
-    if (positionAmt > 0 && o.side !== 'SELL')
-        return false;
-    if (positionAmt < 0 && o.side !== 'BUY')
-        return false;
-    return true;
-}
 let DashboardController = class DashboardController {
     prisma;
-    binance;
-    constructor(prisma, binance) {
+    tradingHealthSvc;
+    constructor(prisma, tradingHealthSvc) {
         this.prisma = prisma;
-        this.binance = binance;
+        this.tradingHealthSvc = tradingHealthSvc;
     }
     async summary(u) {
         const [engineState, strategies, positions, apiConfig] = await Promise.all([
@@ -85,13 +65,10 @@ let DashboardController = class DashboardController {
         };
     }
     async tradingHealth(u) {
-        const fetchErrors = [];
+        const health = await this.tradingHealthSvc.getTradingHealth(u.id);
         const engineState = await this.prisma.engineState.findUnique({ where: { userId: u.id } });
-        const activeStrategies = await this.prisma.strategy.findMany({
-            where: { userId: u.id, enabled: true }, select: { symbol: true },
-        });
-        const strategySymbols = [...new Set(activeStrategies.map(s => s.symbol))];
-        const [recentBotOrders, recentRiskBlocks] = await Promise.all([
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const [recentBotOrders, recentRiskBlocks, criticalBlocks] = await Promise.all([
             this.prisma.order.findMany({
                 where: { userId: u.id },
                 orderBy: { createdAt: 'desc' },
@@ -109,120 +86,25 @@ let DashboardController = class DashboardController {
                 take: 20,
                 select: { id: true, symbol: true, reason: true, detail: true, createdAt: true },
             }),
+            this.prisma.riskBlockLog.findMany({
+                where: {
+                    userId: u.id,
+                    reason: { in: ['ENTRY_ORDER_UNPROTECTED', 'SL_ORDER_FAILED', 'ENTRY_ORDER_STATUS_UNKNOWN', 'POSITION_STILL_OPEN', 'CLOSE_VERIFY_FAILED'] },
+                    createdAt: { gte: oneHourAgo },
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+                select: { id: true, symbol: true, reason: true, detail: true, createdAt: true },
+            }),
         ]);
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const criticalBlocks = await this.prisma.riskBlockLog.findMany({
-            where: {
-                userId: u.id,
-                reason: { in: [...CRITICAL_REASONS] },
-                createdAt: { gte: oneHourAgo },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-            select: { id: true, symbol: true, reason: true, detail: true, createdAt: true },
-        });
-        let apiLoaded = false;
-        try {
-            await this.binance.loadApiConfig(u.id);
-            apiLoaded = true;
-        }
-        catch (e) {
-            fetchErrors.push(`API_CONFIG_LOAD_FAILED: ${e.message}`);
-        }
-        let currentPositions = [];
-        let positionSymbols = [];
-        if (apiLoaded) {
-            try {
-                const raw = await this.binance.getPositionsStrict();
-                currentPositions = raw
-                    .filter((p) => parseFloat(p.positionAmt) !== 0)
-                    .map((p) => ({
-                    symbol: p.symbol,
-                    positionAmt: p.positionAmt,
-                    entryPrice: p.entryPrice,
-                    markPrice: p.markPrice,
-                    unrealizedProfit: p.unRealizedProfit ?? p.unrealizedProfit ?? '0',
-                    liquidationPrice: p.liquidationPrice,
-                    leverage: p.leverage,
-                    marginType: p.marginType,
-                }));
-                positionSymbols = currentPositions.map(p => p.symbol);
-            }
-            catch (e) {
-                fetchErrors.push(`POSITION_FETCH: ${e.message}`);
-            }
-        }
-        const botOrderSymbols = recentBotOrders.map(o => o.symbol).filter(Boolean);
-        const riskBlockSymbols = recentRiskBlocks.map(b => b.symbol).filter(Boolean);
-        const allSymbols = [...new Set([
-                ...positionSymbols, ...strategySymbols,
-                ...botOrderSymbols, ...riskBlockSymbols,
-            ])];
-        let openOrders = [];
-        if (apiLoaded) {
-            try {
-                const raw = await this.binance.getOpenOrders();
-                openOrders = raw.map((o) => ({
-                    symbol: o.symbol,
-                    orderId: o.orderId,
-                    type: o.type,
-                    side: o.side,
-                    price: o.price,
-                    quantity: o.origQty,
-                    status: o.status,
-                }));
-            }
-            catch (e) {
-                fetchErrors.push(`OPEN_ORDERS_FETCH: ${e.message}`);
-            }
-        }
-        let openAlgoOrders = [];
-        if (apiLoaded) {
-            try {
-                if (allSymbols.length > 0) {
-                    const results = await Promise.all(allSymbols.map(sym => this.binance.getOpenAlgoOrders(sym).catch(() => [])));
-                    openAlgoOrders = results.flat().map((o) => ({
-                        symbol: o.symbol,
-                        algoId: o.algoId,
-                        clientAlgoId: o.clientAlgoId,
-                        type: o.orderType ?? o.type,
-                        side: o.side,
-                        triggerPrice: o.triggerPrice ?? o.stopPrice,
-                        algoStatus: o.algoStatus,
-                        closePosition: o.closePosition,
-                    }));
-                }
-                else {
-                    const raw = await this.binance.getOpenAlgoOrders();
-                    openAlgoOrders = raw.map((o) => ({
-                        symbol: o.symbol,
-                        algoId: o.algoId,
-                        clientAlgoId: o.clientAlgoId,
-                        type: o.orderType ?? o.type,
-                        side: o.side,
-                        triggerPrice: o.triggerPrice ?? o.stopPrice,
-                        algoStatus: o.algoStatus,
-                        closePosition: o.closePosition,
-                    }));
-                }
-            }
-            catch (e) {
-                fetchErrors.push(`ALGO_ORDERS_FETCH: ${e.message}`);
-            }
-        }
-        const unprotectedPositions = currentPositions.filter(pos => {
-            const posAmt = parseFloat(pos.positionAmt);
-            return !openAlgoOrders.some(o => o.symbol === pos.symbol && isValidSlAlgo(o, posAmt));
-        });
-        const hasOpenPosition = currentPositions.length > 0;
-        const hasOpenAlgoOrders = openAlgoOrders.length > 0;
-        const hasUnprotectedPosition = unprotectedPositions.length > 0;
-        const hasCriticalRiskBlock = criticalBlocks.length > 0;
-        const isSafeToStartAutoTrade = !hasOpenPosition &&
-            openOrders.length === 0 &&
-            !hasOpenAlgoOrders &&
-            !hasCriticalRiskBlock &&
-            fetchErrors.length === 0;
+        const flags = {
+            ...health.flags,
+            criticalBlockReasons: criticalBlocks.slice(0, 5).map(b => ({
+                reason: b.reason,
+                symbol: b.symbol,
+                createdAt: b.createdAt,
+            })),
+        };
         return {
             success: true,
             data: {
@@ -233,27 +115,12 @@ let DashboardController = class DashboardController {
                     consecLossCount: engineState?.consecLossCount ?? 0,
                     stopReason: engineState?.stopReason ?? null,
                 },
-                currentPositions,
-                openOrders,
-                openAlgoOrders,
+                currentPositions: health.positions,
+                openOrders: health.openOrders,
+                openAlgoOrders: health.openAlgoOrders,
                 recentBotOrders,
                 recentRiskBlocks,
-                healthFlags: {
-                    hasOpenPosition,
-                    hasOpenAlgoOrders,
-                    hasUnprotectedPosition,
-                    unprotectedPositions: unprotectedPositions.map(p => p.symbol),
-                    hasCriticalRiskBlock,
-                    criticalBlockReasons: criticalBlocks.slice(0, 5).map(b => ({
-                        reason: b.reason,
-                        symbol: b.symbol,
-                        createdAt: b.createdAt,
-                    })),
-                    criticalWindowMinutes: 60,
-                    scannedSymbols: allSymbols.length,
-                    isSafeToStartAutoTrade,
-                    fetchErrors,
-                },
+                healthFlags: flags,
             },
         };
     }
@@ -277,6 +144,6 @@ exports.DashboardController = DashboardController = __decorate([
     (0, common_1.Controller)('dashboard'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        binance_service_1.BinanceService])
+        trading_health_service_1.TradingHealthService])
 ], DashboardController);
 //# sourceMappingURL=dashboard.controller.js.map

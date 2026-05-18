@@ -50,12 +50,12 @@ export declare class FuturesService {
         leverage: number;
         marginType: import(".prisma/client").$Enums.MarginType;
         strategyId: string | null;
-        side: import(".prisma/client").$Enums.OrderSide;
-        positionSide: import(".prisma/client").$Enums.PositionSide;
-        quantity: number;
         binanceOrderId: string | null;
         clientOrderId: string | null;
+        side: import(".prisma/client").$Enums.OrderSide;
+        positionSide: import(".prisma/client").$Enums.PositionSide;
         orderType: import(".prisma/client").$Enums.OrderType;
+        quantity: number;
         price: number | null;
         stopPrice: number | null;
         avgFillPrice: number | null;
@@ -65,8 +65,8 @@ export declare class FuturesService {
         commissionAsset: string | null;
         entryReason: string | null;
         exitReason: string | null;
+        positionId: string | null;
         errorMessage: string | null;
         filledAt: Date | null;
-        positionId: string | null;
     })[]>;
 }

@@ -15,12 +15,13 @@ const strategy_rule_evaluator_1 = require("./strategy-rule-evaluator");
 const engine_controller_1 = require("./engine.controller");
 const prisma_module_1 = require("../../prisma/prisma.module");
 const binance_module_1 = require("../binance/binance.module");
+const trading_health_module_1 = require("./trading-health.module");
 let EngineModule = class EngineModule {
 };
 exports.EngineModule = EngineModule;
 exports.EngineModule = EngineModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule, binance_module_1.BinanceModule],
+        imports: [prisma_module_1.PrismaModule, binance_module_1.BinanceModule, trading_health_module_1.TradingHealthModule],
         controllers: [engine_controller_1.EngineController],
         providers: [
             engine_service_1.EngineService,
@@ -28,7 +29,7 @@ exports.EngineModule = EngineModule = __decorate([
             indicator_service_1.IndicatorService,
             strategy_rule_evaluator_1.StrategyRuleEvaluator,
         ],
-        exports: [engine_service_1.EngineService, strategy_engine_service_1.StrategyEngineService],
+        exports: [engine_service_1.EngineService, strategy_engine_service_1.StrategyEngineService, trading_health_module_1.TradingHealthModule],
     })
 ], EngineModule);
 //# sourceMappingURL=engine.module.js.map

@@ -20,6 +20,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BinanceService } from '../binance/binance.service';
 import { IndicatorService, Kline } from './indicator.service';
 import { StrategyRuleEvaluator, StrategyRule, EvalMode, validateRule } from './strategy-rule-evaluator';
+import { TradingHealthService } from './trading-health.service';
 
 interface StrategyParams {
   evalMode?:            EvalMode;
@@ -37,10 +38,11 @@ export class StrategyEngineService {
   private timers = new Map<string, NodeJS.Timeout>();
 
   constructor(
-    private prisma:    PrismaService,
-    private binance:   BinanceService,
-    private indicator: IndicatorService,
-    private evaluator: StrategyRuleEvaluator,
+    private prisma:         PrismaService,
+    private binance:        BinanceService,
+    private indicator:      IndicatorService,
+    private evaluator:      StrategyRuleEvaluator,
+    private tradingHealthSvc: TradingHealthService,
   ) {}
 
   async startEngine(userId: string) {
