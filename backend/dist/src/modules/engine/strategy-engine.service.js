@@ -397,7 +397,7 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                     else {
                         await this.logRiskBlock(userId, strategy.id ?? null, symbol, 'ENTRY_ORDER_STATUS_UNKNOWN', { orderId });
                         await this.haltEngine(userId, 'ENTRY_ORDER_STATUS_UNKNOWN');
-                        return;
+                        return { entered: false, protected: false, reason: 'ENTRY_ORDER_STATUS_UNKNOWN' };
                     }
                 }
                 catch (e) {

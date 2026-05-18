@@ -135,8 +135,8 @@ export default function NewStrategyPage() {
 
         <div style={{ ...sec, border: '1px solid #1E3A5F' }}>
           <h3 style={{ color: '#60A5FA', marginBottom: '16px', fontSize: '15px' }}>청산 / 차단 조건</h3>
-          <RuleBuilder title="청산 조건" rules={form.params.exitRules} warnUnused showWeight={false} onChange={r => setParam('exitRules', r)} />
-          <RuleBuilder title="차단 조건" rules={form.params.blockRules} showWeight={false} onChange={r => setParam('blockRules', r)} />
+          <RuleBuilder title="청산 조건" excludeRuleTypes={["TEST_FORCE_ENTRY_ONCE"]} rules={form.params.exitRules} warnUnused showWeight={false} onChange={r => setParam('exitRules', r)} />
+          <RuleBuilder title="차단 조건" excludeRuleTypes={["TEST_FORCE_ENTRY_ONCE"]} rules={form.params.blockRules} showWeight={false} onChange={r => setParam('blockRules', r)} />
         </div>
 
         {msg && <div style={{ padding: '12px', borderRadius: '8px', marginBottom: '12px', background: '#1F2937', color: '#FCA5A5', fontSize: '14px' }}>{msg}</div>}
