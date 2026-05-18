@@ -270,7 +270,27 @@ export class StrategyEngineService {
       }
 
       if (isTestEntry && !testEntryUsed) {
-        // Trading Health Check: 최근 1시간 내 치명 리스크 로그 확인
+        // ── Trading Health Check — isSafeToStartAutoTrade 전체 기준 ──
+        const fetchErrors: string[] = [];
+        let hasOpenPosition   = false;
+        let hasOpenOrders     = false;
+        let hasOpenAlgoOrders = false;
+
+        try {
+          const livePos = await this.binance.getPositionsStrict();
+          hasOpenPosition = livePos.some((p: any) => parseFloat(p.positionAmt) !== 0);
+        } catch (e: any) { fetchErrors.push(`POSITION_FETCH: ${e.message}`); }
+
+        try {
+          const liveOrders = await this.binance.getOpenOrders();
+          hasOpenOrders = liveOrders.length > 0;
+        } catch (e: any) { fetchErrors.push(`OPEN_ORDERS_FETCH: ${e.message}`); }
+
+        try {
+          const algoOrders = await this.binance.getOpenAlgoOrders(strategy.symbol);
+          hasOpenAlgoOrders = algoOrders.length > 0;
+        } catch (e: any) { fetchErrors.push(`ALGO_ORDERS_FETCH: ${e.message}`); }
+
         const oneHourAgo = new Date(Date.now() - 3600_000);
         const criticalLog = await this.prisma.riskBlockLog.findFirst({
           where: {
@@ -279,37 +299,35 @@ export class StrategyEngineService {
             createdAt: { gte: oneHourAgo },
           },
         });
-        if (criticalLog) {
-          await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED',
-            { reason: 'hasCriticalRiskBlock', criticalReason: criticalLog.reason, at: criticalLog.createdAt });
-          this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — 치명 리스크 로그: ${criticalLog.reason}`);
+        const hasCriticalRiskBlock = !!criticalLog;
+
+        const isSafe =
+          !hasOpenPosition &&
+          !hasOpenOrders &&
+          !hasOpenAlgoOrders &&
+          !hasCriticalRiskBlock &&
+          fetchErrors.length === 0;
+
+        if (!isSafe) {
+          await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED', {
+            isSafeToStartAutoTrade: false,
+            hasOpenPosition,
+            hasOpenOrders,
+            hasOpenAlgoOrders,
+            hasCriticalRiskBlock,
+            criticalReason: criticalLog?.reason ?? null,
+            fetchErrors,
+          });
+          this.logger.warn(
+            `[${strategy.symbol}] 테스트 진입 차단 — isSafe:false` +
+            ` (pos:${hasOpenPosition} orders:${hasOpenOrders}` +
+            ` algo:${hasOpenAlgoOrders} critical:${hasCriticalRiskBlock}` +
+            ` errors:${fetchErrors.length})`
+          );
           return;
         }
-        // Binance open algo orders 체크 (SL 없는 포지션 보호)
-        let openAlgoCount = 0;
-        let algoFetchErr: string | null = null;
-        try {
-          const algoOrders = await this.binance.getOpenAlgoOrders(strategy.symbol);
-          openAlgoCount = algoOrders.length;
-        } catch (e: any) {
-          algoFetchErr = e.message;
-        }
 
-        const healthDetail = {
-          hasCriticalRiskBlock: false,
-          hasOpenAlgoOrders:    openAlgoCount > 0,
-          algoOrderCount:       openAlgoCount,
-          algoFetchError:       algoFetchErr,
-        };
-
-        if (algoFetchErr) {
-          await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED',
-            { reason: 'ALGO_FETCH_FAILED', ...healthDetail });
-          this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — Algo 주문 조회 실패`);
-          return;
-        }
-
-        this.logger.log(`[${strategy.symbol}] TEST_FORCE_ENTRY_ONCE — 진입 시도 (algoOrders: ${openAlgoCount})`);
+        this.logger.log(`[${strategy.symbol}] TEST_FORCE_ENTRY_ONCE — 헬스체크 통과, 진입 시도`);
       }
 
       const tfMap: Record<string, string> = { m1:'1m', m5:'5m', m15:'15m', h1:'1h', h4:'4h' };

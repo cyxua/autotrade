@@ -235,6 +235,31 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                 return;
             }
             if (isTestEntry && !testEntryUsed) {
+                const fetchErrors = [];
+                let hasOpenPosition = false;
+                let hasOpenOrders = false;
+                let hasOpenAlgoOrders = false;
+                try {
+                    const livePos = await this.binance.getPositionsStrict();
+                    hasOpenPosition = livePos.some((p) => parseFloat(p.positionAmt) !== 0);
+                }
+                catch (e) {
+                    fetchErrors.push(`POSITION_FETCH: ${e.message}`);
+                }
+                try {
+                    const liveOrders = await this.binance.getOpenOrders();
+                    hasOpenOrders = liveOrders.length > 0;
+                }
+                catch (e) {
+                    fetchErrors.push(`OPEN_ORDERS_FETCH: ${e.message}`);
+                }
+                try {
+                    const algoOrders = await this.binance.getOpenAlgoOrders(strategy.symbol);
+                    hasOpenAlgoOrders = algoOrders.length > 0;
+                }
+                catch (e) {
+                    fetchErrors.push(`ALGO_ORDERS_FETCH: ${e.message}`);
+                }
                 const oneHourAgo = new Date(Date.now() - 3600_000);
                 const criticalLog = await this.prisma.riskBlockLog.findFirst({
                     where: {
@@ -243,32 +268,29 @@ let StrategyEngineService = StrategyEngineService_1 = class StrategyEngineServic
                         createdAt: { gte: oneHourAgo },
                     },
                 });
-                if (criticalLog) {
-                    await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED', { reason: 'hasCriticalRiskBlock', criticalReason: criticalLog.reason, at: criticalLog.createdAt });
-                    this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — 치명 리스크 로그: ${criticalLog.reason}`);
+                const hasCriticalRiskBlock = !!criticalLog;
+                const isSafe = !hasOpenPosition &&
+                    !hasOpenOrders &&
+                    !hasOpenAlgoOrders &&
+                    !hasCriticalRiskBlock &&
+                    fetchErrors.length === 0;
+                if (!isSafe) {
+                    await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED', {
+                        isSafeToStartAutoTrade: false,
+                        hasOpenPosition,
+                        hasOpenOrders,
+                        hasOpenAlgoOrders,
+                        hasCriticalRiskBlock,
+                        criticalReason: criticalLog?.reason ?? null,
+                        fetchErrors,
+                    });
+                    this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — isSafe:false` +
+                        ` (pos:${hasOpenPosition} orders:${hasOpenOrders}` +
+                        ` algo:${hasOpenAlgoOrders} critical:${hasCriticalRiskBlock}` +
+                        ` errors:${fetchErrors.length})`);
                     return;
                 }
-                let openAlgoCount = 0;
-                let algoFetchErr = null;
-                try {
-                    const algoOrders = await this.binance.getOpenAlgoOrders(strategy.symbol);
-                    openAlgoCount = algoOrders.length;
-                }
-                catch (e) {
-                    algoFetchErr = e.message;
-                }
-                const healthDetail = {
-                    hasCriticalRiskBlock: false,
-                    hasOpenAlgoOrders: openAlgoCount > 0,
-                    algoOrderCount: openAlgoCount,
-                    algoFetchError: algoFetchErr,
-                };
-                if (algoFetchErr) {
-                    await this.logRiskBlock(userId, strategy.id, strategy.symbol, 'TEST_ENTRY_BLOCKED', { reason: 'ALGO_FETCH_FAILED', ...healthDetail });
-                    this.logger.warn(`[${strategy.symbol}] 테스트 진입 차단 — Algo 주문 조회 실패`);
-                    return;
-                }
-                this.logger.log(`[${strategy.symbol}] TEST_FORCE_ENTRY_ONCE — 진입 시도 (algoOrders: ${openAlgoCount})`);
+                this.logger.log(`[${strategy.symbol}] TEST_FORCE_ENTRY_ONCE — 헬스체크 통과, 진입 시도`);
             }
             const tfMap = { m1: '1m', m5: '5m', m15: '15m', h1: '1h', h4: '4h' };
             let klines = await this.binance.getKlines(strategy.symbol, tfMap[strategy.timeframe] ?? '15m', 250);
